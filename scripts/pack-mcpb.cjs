@@ -20,27 +20,23 @@ function run(cmd, opts = {}) {
 
 try {
   // 1. Build the project
-  console.log('
-=== Building project ===');
+  console.log('\n=== Building project ===');
   run('npm run build', { cwd: ROOT });
 
   // 2. Clean and create staging directory
-  console.log('
-=== Preparing staging directory ===');
+  console.log('\n=== Preparing staging directory ===');
   if (existsSync(STAGING)) rmSync(STAGING, { recursive: true });
   mkdirSync(STAGING, { recursive: true });
 
   // 3. Copy production files (sync manifest version from package.json)
-  console.log('
-=== Copying production files ===');
+  console.log('\n=== Copying production files ===');
   const pkg = require(join(ROOT, 'package.json'));
   cpSync(join(ROOT, 'dist'), join(STAGING, 'dist'), { recursive: true });
   const manifest = JSON.parse(require('fs').readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
   manifest.version = pkg.version;
   require('fs').writeFileSync(
     join(STAGING, 'manifest.json'),
-    JSON.stringify(manifest, null, 2) + '
-'
+    JSON.stringify(manifest, null, 2) + '\n'
   );
   copyFileSync(join(ROOT, 'README.md'), join(STAGING, 'README.md'));
   if (existsSync(join(ROOT, 'LICENSE'))) {
@@ -61,11 +57,9 @@ try {
   );
 
   // 5. Copy only production dependencies
-  console.log('
-=== Copying production dependencies ===');
+  console.log('\n=== Copying production dependencies ===');
   const prodPaths = execSync('npm ls --production --parseable --all 2>/dev/null', { cwd: ROOT, encoding: 'utf8' })
-    .split('
-')
+    .split('\n')
     .filter(p => p.includes('node_modules'))
     .map(p => p.trim());
   console.log(`  ${prodPaths.length} production packages`);
@@ -80,8 +74,8 @@ try {
 
   // 6. Remove unnecessary files from staging
   run('find dist -name "*.map" -delete', { cwd: STAGING });
-  run('find node_modules -type d \( -name test -o -name tests -o -name __tests__ -o -name examples -o -name example \) -exec rm -rf {} + 2>/dev/null || true', { cwd: STAGING });
-  run('find node_modules -type f \( -name "*.map" -o -name "CHANGELOG*" -o -name "HISTORY*" -o -name "CONTRIBUTING*" -o -name ".eslintrc*" -o -name ".prettierrc*" -o -name "tsconfig.json" \) -delete 2>/dev/null || true', { cwd: STAGING });
+  run('find node_modules -type d \\( -name test -o -name tests -o -name __tests__ -o -name examples -o -name example \\) -exec rm -rf {} + 2>/dev/null || true', { cwd: STAGING });
+  run('find node_modules -type f \\( -name "*.map" -o -name "CHANGELOG*" -o -name "HISTORY*" -o -name "CONTRIBUTING*" -o -name ".eslintrc*" -o -name ".prettierrc*" -o -name "tsconfig.json" \\) -delete 2>/dev/null || true', { cwd: STAGING });
 
   // 7. Copy .mcpbignore if present
   if (existsSync(join(ROOT, '.mcpbignore'))) {
@@ -89,18 +83,15 @@ try {
   }
 
   // 8. Pack the bundle
-  console.log('
-=== Packing MCPB bundle ===');
+  console.log('\n=== Packing MCPB bundle ===');
   const bundlePath = join(ROOT, `${pkg.name}.mcpb`);
   run(`npx mcpb pack "${STAGING}" "${bundlePath}"`, { cwd: ROOT });
 
   // 9. Cleanup
-  console.log('
-=== Cleanup ===');
+  console.log('\n=== Cleanup ===');
   rmSync(STAGING, { recursive: true });
 
-  console.log('
-=== Done! ===');
+  console.log('\n=== Done! ===');
   if (existsSync(bundlePath)) {
     const stats = require('fs').statSync(bundlePath);
     console.log(`Bundle: ${pkg.name}.mcpb (${(stats.size / 1024 / 1024).toFixed(1)}MB)`);
