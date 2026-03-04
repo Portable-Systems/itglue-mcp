@@ -1,3 +1,12 @@
+## [1.2.1](https://github.com/wyre-technology/itglue-mcp/compare/v1.2.0...v1.2.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* remove old pack-mcpb.js (replaced by .cjs) ([20c5a85](https://github.com/wyre-technology/itglue-mcp/commit/20c5a85b9a2d6e3b3787693317cd3edc5710d378))
+* rename pack-mcpb.js to .cjs for ESM compatibility ([05aff3e](https://github.com/wyre-technology/itglue-mcp/commit/05aff3ed9b6db7207943d57b4227b34cb40c0002))
+* update pack:mcpb script to use .cjs extension ([cd94dff](https://github.com/wyre-technology/itglue-mcp/commit/cd94dff63a9d5f68bf82dbd2190ec7641abfd707))
+
 # [1.2.0](https://github.com/wyre-technology/itglue-mcp/compare/v1.1.2...v1.2.0) (2026-03-04)
 
 
