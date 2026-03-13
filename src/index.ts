@@ -317,19 +317,19 @@ function createMcpServer(): Server {
           properties: {
             name: {
               type: "string",
-              description: "Filter by organization name (partial match)",
+              description: "Optional parameter. Filter by organization name (exact match)",
             },
             organization_type_id: {
               type: "number",
-              description: "Filter by organization type ID",
+              description: "Optional parameter. Filter by organization type ID",
             },
             organization_status_id: {
               type: "number",
-              description: "Filter by organization status ID",
+              description: "Optional parameter. Filter by organization status ID",
             },
             psa_id: {
               type: "string",
-              description: "Filter by PSA integration ID",
+              description: "Optional parameter. Filter by PSA integration ID",
             },
             page_size: {
               type: "number",
@@ -355,7 +355,7 @@ function createMcpServer(): Server {
           properties: {
             id: {
               type: "string",
-              description: "The organization ID",
+              description: "Required parameter. The organization ID",
             },
           },
           required: ["id"],
