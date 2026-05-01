@@ -107,29 +107,6 @@ function buildFilterParams(filter: Record<string, unknown>): Record<string, stri
   return result;
 }
 
-function pickIdAndNameList(items: Array<Record<string, unknown>>): Array<{ id: unknown; name: unknown }> {
-  return items.map((item) => ({
-    id: item.id,
-    name: (item.attributes as Record<string, unknown> | undefined)?.name,
-  }));
-}
-
-function pickPasswordCategoryList(items: Array<Record<string, unknown>>): Array<{ id: unknown; name: unknown; passwordsCount: unknown }> {
-  return items.map((item) => ({
-    id: item.id,
-    name: (item.attributes as Record<string, unknown> | undefined)?.name,
-    passwordsCount: (item.attributes as Record<string, unknown> | undefined)?.["passwords-count"],
-  }));
-}
-
-function pickConfigurationTypeList(items: Array<Record<string, unknown>>): Array<{ id: unknown; name: unknown; configurationsCount: unknown }> {
-  return items.map((item) => ({
-    id: item.id,
-    name: (item.attributes as Record<string, unknown> | undefined)?.name,
-    configurationsCount: (item.attributes as Record<string, unknown> | undefined)?.["configurations-count"],
-  }));
-}
-
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -1119,11 +1096,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "list_organization_statuses": {
         const result = await client.request("/organization_statuses", { page: { size: 1000, number: 1 } });
+        const organizationStatuses = (result.data as Array<Record<string, unknown>>).map((item) => ({
+          id: item.id,
+          name: (item.attributes as Record<string, unknown> | undefined)?.name,
+        }));
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(pickIdAndNameList(result.data as Array<Record<string, unknown>>), null, 2),
+              text: JSON.stringify(organizationStatuses, null, 2),
             },
           ],
         };
@@ -1131,11 +1112,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "list_organization_types": {
         const result = await client.request("/organization_types", { page: { size: 1000, number: 1 } });
+        const organizationTypes = (result.data as Array<Record<string, unknown>>).map((item) => ({
+          id: item.id,
+          name: (item.attributes as Record<string, unknown> | undefined)?.name,
+        }));
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(pickIdAndNameList(result.data as Array<Record<string, unknown>>), null, 2),
+              text: JSON.stringify(organizationTypes, null, 2),
             },
           ],
         };
@@ -1143,11 +1128,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "list_password_categories": {
         const result = await client.request("/password_categories", { page: { size: 1000, number: 1 } });
+        const passwordCategories = (result.data as Array<Record<string, unknown>>).map((item) => ({
+          id: item.id,
+          name: (item.attributes as Record<string, unknown> | undefined)?.name,
+          passwordsCount: (item.attributes as Record<string, unknown> | undefined)?.["passwords-count"],
+        }));
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(pickPasswordCategoryList(result.data as Array<Record<string, unknown>>), null, 2),
+              text: JSON.stringify(passwordCategories, null, 2),
             },
           ],
         };
@@ -1155,11 +1145,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "list_configuration_statuses": {
         const result = await client.request("/configuration_statuses", { page: { size: 1000, number: 1 } });
+        const configurationStatuses = (result.data as Array<Record<string, unknown>>).map((item) => ({
+          id: item.id,
+          name: (item.attributes as Record<string, unknown> | undefined)?.name,
+        }));
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(pickIdAndNameList(result.data as Array<Record<string, unknown>>), null, 2),
+              text: JSON.stringify(configurationStatuses, null, 2),
             },
           ],
         };
@@ -1167,11 +1161,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "list_configuration_types": {
         const result = await client.request("/configuration_types", { page: { size: 1000, number: 1 } });
+        const configurationTypes = (result.data as Array<Record<string, unknown>>).map((item) => ({
+          id: item.id,
+          name: (item.attributes as Record<string, unknown> | undefined)?.name,
+          configurationsCount: (item.attributes as Record<string, unknown> | undefined)?.["configurations-count"],
+        }));
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(pickConfigurationTypeList(result.data as Array<Record<string, unknown>>), null, 2),
+              text: JSON.stringify(configurationTypes, null, 2),
             },
           ],
         };
