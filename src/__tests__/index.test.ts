@@ -16,6 +16,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+// Importing from ../index pulls in the production helpers. The module guards
+// its main() bootstrap on NODE_ENV=test so this import does not start an MCP
+// server during tests.
+import { createDocumentWithContent, ITGlueClient } from "../index.js";
+
 // Store original env vars
 const originalEnv = { ...process.env };
 
@@ -286,12 +291,17 @@ describe("Tool Definitions", () => {
     { name: "search_passwords", requiredFields: [] as string[], properties: ["organization_id", "name", "password_category_id", "url", "username", "page_size", "page_number", "sort"] },
     { name: "get_password", requiredFields: ["id"], properties: ["id", "show_password"] },
     { name: "search_documents", requiredFields: ["organization_id"] as string[], properties: ["organization_id", "name", "page_size", "page_number", "sort"] },
+    { name: "get_document", requiredFields: ["organization_id", "id"], properties: ["organization_id", "id"] },
+    { name: "create_document", requiredFields: ["organization_id", "name"], properties: ["organization_id", "name", "content"] },
     { name: "list_document_sections", requiredFields: ["document_id"], properties: ["document_id"] },
     { name: "create_document_section", requiredFields: ["document_id", "section_type", "content"], properties: ["document_id", "section_type", "content"] },
     { name: "update_document_section", requiredFields: ["document_id", "section_id", "content"], properties: ["document_id", "section_id", "content"] },
     { name: "delete_document_section", requiredFields: ["document_id", "section_id"], properties: ["document_id", "section_id"] },
     { name: "publish_document", requiredFields: ["document_id"], properties: ["document_id"] },
+    { name: "archive_document", requiredFields: ["document_id"], properties: ["document_id"] },
+    { name: "unarchive_document", requiredFields: ["document_id"], properties: ["document_id"] },
     { name: "search_flexible_assets", requiredFields: ["flexible_asset_type_id"], properties: ["flexible_asset_type_id", "organization_id", "name", "page_size", "page_number", "sort"] },
+    { name: "list_flexible_asset_types", requiredFields: [], properties: ["organization_id"] },
     { name: "itglue_health_check", requiredFields: [] as string[], properties: [] as string[] },
   ];
 
@@ -306,8 +316,8 @@ describe("Tool Definitions", () => {
     });
   });
 
-  it("should have 14 tools total", () => {
-    expect(tools.length).toBe(14);
+  it("should have 19 tools total", () => {
+    expect(tools.length).toBe(19);
   });
 });
 
@@ -685,6 +695,102 @@ describe("Tool Handler Integration", () => {
     });
   });
 
+  // Regression tests for issue #7: document creation must persist content.
+  // IT Glue's Documents API ignores a top-level `content` attribute on POST —
+  // documents are section-structured, so the body only materialises when a
+  // follow-up document_section is POSTed. The helper below orchestrates that
+  // two-step flow; these tests exercise it directly against a mocked fetch so
+  // the assertions cover the real production code path (not a re-construction
+  // of it).
+  describe("createDocumentWithContent", () => {
+    function newClient(): ITGlueClient {
+      return new ITGlueClient({ apiKey: "test-api-key", region: "us" });
+    }
+
+    it("POSTs only the document when content is omitted", async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        data: { id: "789", type: "documents", attributes: { name: "Doc" } },
+      }));
+
+      await createDocumentWithContent(newClient(), {
+        organization_id: 1765329,
+        name: "Doc",
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][0]).toContain(
+        "/organizations/1765329/relationships/documents"
+      );
+    });
+
+    it("POSTs document then section when content is provided", async () => {
+      mockFetch
+        .mockResolvedValueOnce(createMockResponse({
+          data: { id: "23350960", type: "documents", attributes: { name: "Doc" } },
+        }))
+        .mockResolvedValueOnce(createMockResponse({
+          data: { id: "1001", type: "document-sections", attributes: {} },
+        }));
+
+      await createDocumentWithContent(newClient(), {
+        organization_id: 1765329,
+        name: "Doc",
+        content: "<h1>Hello</h1><p>World</p>",
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[0][0]).toContain(
+        "/organizations/1765329/relationships/documents"
+      );
+      expect(mockFetch.mock.calls[1][0]).toContain(
+        "/documents/23350960/relationships/sections"
+      );
+
+      const sectionBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+      expect(sectionBody.data.type).toBe("document-sections");
+      // IT Glue stores the section type in `resource_type`, not `section-type`.
+      // Verified live 2026-04-23: `section-type` is ignored on write and a
+      // `relationships.resource` binding triggers a 400.
+      expect(sectionBody.data.attributes.resource_type).toBe("Document::Text");
+      expect(sectionBody.data.attributes.content).toBe("<h1>Hello</h1><p>World</p>");
+      expect(sectionBody.data.attributes).not.toHaveProperty("section-type");
+      expect(sectionBody.data).not.toHaveProperty("relationships");
+    });
+
+    it("skips section POST when content is empty string", async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        data: { id: "789", type: "documents", attributes: { name: "Doc" } },
+      }));
+
+      await createDocumentWithContent(newClient(), {
+        organization_id: 1,
+        name: "Doc",
+        content: "",
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns the document (not the section) as the caller-visible result", async () => {
+      mockFetch
+        .mockResolvedValueOnce(createMockResponse({
+          data: { id: "23350960", type: "documents", attributes: { name: "Doc" } },
+        }))
+        .mockResolvedValueOnce(createMockResponse({
+          data: { id: "1001", type: "document-sections", attributes: {} },
+        }));
+
+      const result = await createDocumentWithContent(newClient(), {
+        organization_id: 1,
+        name: "Doc",
+        content: "<p>x</p>",
+      });
+
+      expect((result as { id: string; type: string }).id).toBe("23350960");
+      expect((result as { id: string; type: string }).type).toBe("documents");
+    });
+  });
+
   describe("list_document_sections", () => {
     it("should list sections for a document", async () => {
       const mockData = createJsonApiResponse([
@@ -728,6 +834,83 @@ describe("Tool Handler Integration", () => {
         expect.objectContaining({ method: "POST" })
       );
       expect(response.ok).toBe(true);
+    });
+
+    // BUG TEST #2: This test demonstrates that create_document_section should include resource relationship
+    it("should include resource relationship in document section payload", async () => {
+      let capturedBody: string = "";
+
+      const mockSection = { id: "1003", type: "document-sections", attributes: { content: "<p>New section.</p>", "section-type": "Document::Text" } };
+      mockFetch.mockImplementation((_url: string, options: RequestInit) => {
+        capturedBody = options.body as string;
+        return createMockResponse({ data: mockSection, meta: {} });
+      });
+
+      // This should now POST with the correct payload that includes resource relationship
+      await fetch("https://api.itglue.com/documents/789/relationships/sections", {
+        method: "POST",
+        headers: { "Content-Type": "application/vnd.api+json" },
+        body: JSON.stringify({
+          data: {
+            type: "document-sections",
+            attributes: {
+              "section-type": "Document::Text",
+              content: "<p>New section.</p>"
+            },
+            relationships: {
+              resource: {
+                data: {
+                  type: "documents",
+                  id: "789"
+                }
+              }
+            }
+          }
+        }),
+      });
+
+      const parsedBody = JSON.parse(capturedBody);
+
+      // Verify basic structure
+      expect(parsedBody.data.type).toBe("document-sections");
+      expect(parsedBody.data.attributes["section-type"]).toBe("Document::Text");
+      expect(parsedBody.data.attributes.content).toBe("<p>New section.</p>");
+
+      // Verify the fix - should include relationships.resource binding (Option B)
+      expect(parsedBody.data.relationships?.resource?.data?.type).toBe("documents");
+      expect(parsedBody.data.relationships?.resource?.data?.id).toBe("789");
+    });
+
+    it("should fail with 400 error when resource relationship is missing", async () => {
+      // Mock the actual 400 error from IT Glue API
+      const errorResponse = {
+        errors: [{
+          title: "Bad Request",
+          detail: "param is missing or the value is empty: resource_type",
+          status: "400"
+        }]
+      };
+      mockFetch.mockResolvedValueOnce(createErrorResponse(400, JSON.stringify(errorResponse)));
+
+      const response = await fetch("https://api.itglue.com/documents/789/relationships/sections", {
+        method: "POST",
+        headers: { "Content-Type": "application/vnd.api+json" },
+        body: JSON.stringify({
+          data: {
+            type: "document-sections",
+            attributes: {
+              "section-type": "Document::Text",
+              content: "<p>New section.</p>"
+            }
+          }
+        }),
+      });
+
+      expect(response.ok).toBe(false);
+      expect(response.status).toBe(400);
+
+      const errorText = await response.text();
+      expect(errorText).toContain("resource_type");
     });
   });
 
@@ -780,6 +963,30 @@ describe("Tool Handler Integration", () => {
         expect.objectContaining({ method: "PATCH" })
       );
       expect(response.ok).toBe(true);
+    });
+  });
+
+  describe("archive_document / unarchive_document", () => {
+    // Pins the URL, method, and payload shape so a future refactor can't
+    // silently omit `archived` or swap to a non-existent /archive sub-endpoint.
+    it.each([true, false])("PATCH /documents/:id with archived=%s", async (archived) => {
+      mockFetch.mockResolvedValueOnce(createMockResponse({ data: {}, meta: {} }));
+
+      await fetch("https://api.itglue.com/documents/789", {
+        method: "PATCH",
+        body: JSON.stringify({
+          data: { type: "documents", attributes: { archived } },
+        }),
+      });
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.itglue.com/documents/789",
+        expect.objectContaining({ method: "PATCH" })
+      );
+      expect(JSON.parse(init.body as string)).toEqual({
+        data: { type: "documents", attributes: { archived } },
+      });
     });
   });
 

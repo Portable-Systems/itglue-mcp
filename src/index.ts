@@ -17,6 +17,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { setServerRef } from "./utils/server-ref.js";
 import { elicitText } from "./utils/elicitation.js";
+import { registerPromptHandlers } from "./prompts.js";
 
 // IT Glue region configuration
 type ITGlueRegion = "us" | "eu" | "au";
@@ -105,7 +106,7 @@ function buildFilterParams(filter: Record<string, unknown>): Record<string, stri
 }
 
 // Simple IT Glue client
-class ITGlueClient {
+export class ITGlueClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
 
@@ -261,6 +262,58 @@ class ITGlueClient {
   }
 }
 
+/**
+ * Create a document *with* its body content.
+ *
+ * IT Glue's Documents API accepts but does not persist a top-level `content`
+ * attribute on POST — documents are section-structured, so a document's body
+ * only exists once a child `document-sections` resource has been created.
+ * This helper performs the full flow: POST the document, then (if content was
+ * supplied) POST a `Document::Text` section against it.
+ *
+ * Payload shape verified live against IT Glue's API: the section-type lives
+ * in the `resource_type` attribute (values `Document::Text` or
+ * `Document::Heading`). The `section-type` field is accepted but ignored; a
+ * `relationships.resource` binding causes HTTP 400
+ * `"param is missing or the value is empty: resource_type"`.
+ *
+ * Returns the deserialized document resource (not the section) so the caller
+ * sees the same shape as a simple POST.
+ */
+export async function createDocumentWithContent(
+  client: ITGlueClient,
+  args: {
+    organization_id: number | string;
+    name: string;
+    content?: string;
+  }
+): Promise<Record<string, unknown>> {
+  const newDoc = await client.post<Record<string, unknown>>(
+    `/organizations/${args.organization_id}/relationships/documents`,
+    {
+      data: {
+        type: "documents",
+        attributes: { name: args.name },
+      },
+    }
+  );
+
+  if (args.content !== undefined && args.content !== "") {
+    const docId = String(newDoc.id);
+    await client.post(`/documents/${docId}/relationships/sections`, {
+      data: {
+        type: "document-sections",
+        attributes: {
+          resource_type: "Document::Text",
+          content: args.content,
+        },
+      },
+    });
+  }
+
+  return newDoc;
+}
+
 // Credential extraction from gateway headers
 interface GatewayCredentials {
   apiKey?: string;
@@ -291,7 +344,7 @@ function createClient(credentials: GatewayCredentials): ITGlueClient {
  * Create a fresh MCP Server with all tool handlers registered.
  * Called per-request in HTTP (stateless) mode so each initialize gets a clean server.
  */
-function createMcpServer(): Server {
+function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
   const server = new Server(
     {
       name: "itglue-mcp",
@@ -300,10 +353,14 @@ function createMcpServer(): Server {
     {
       capabilities: {
         tools: {},
+        prompts: {},
       },
     }
   );
   setServerRef(server);
+
+  // Register prompt handlers
+  registerPromptHandlers(server);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -514,6 +571,10 @@ function createMcpServer(): Server {
               type: "string",
               description: "Sort field (prefix with - for descending)",
             },
+            document_folder_id: {
+              type: "number",
+              description: "Filter by document folder ID to search within a specific folder",
+            },
           },
           required: ["organization_id"],
         },
@@ -650,6 +711,34 @@ function createMcpServer(): Server {
           required: ["document_id"],
         },
       },
+      {
+        name: "archive_document",
+        description: "Archive an IT Glue document (soft delete — hides it from normal views but keeps it recoverable). Use unarchive_document to restore.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            document_id: {
+              type: "number",
+              description: "The document ID to archive",
+            },
+          },
+          required: ["document_id"],
+        },
+      },
+      {
+        name: "unarchive_document",
+        description: "Restore a previously archived IT Glue document so it appears in normal views again.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            document_id: {
+              type: "number",
+              description: "The document ID to unarchive",
+            },
+          },
+          required: ["document_id"],
+        },
+      },
       // Flexible Assets
       {
         name: "list_flexible_asset_types",
@@ -716,7 +805,7 @@ function createMcpServer(): Server {
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  const credentials = getCredentialsFromEnv();
+  const credentials = credentialOverrides ?? getCredentialsFromEnv();
 
   if (!credentials.apiKey) {
     return {
@@ -971,6 +1060,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const filter: Record<string, unknown> = {};
 
         if (args?.name) filter.name = args.name;
+        if (args?.document_folder_id) filter.documentFolderId = args.document_folder_id;
 
         if (Object.keys(filter).length > 0) params.filter = filter;
         if (args?.sort) params.sort = args.sort;
@@ -1029,18 +1119,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
-        const newDoc = await client.post(
-          `/organizations/${args.organization_id}/relationships/documents`,
-          {
-            data: {
-              type: "documents",
-              attributes: {
-                name: args.name,
-                ...(args.content ? { content: args.content } : {}),
-              },
-            },
-          }
-        );
+        const newDoc = await createDocumentWithContent(client, {
+          organization_id: args.organization_id as number | string,
+          name: args.name as string,
+          content: args.content as string | undefined,
+        });
         return {
           content: [{ type: "text", text: JSON.stringify(newDoc, null, 2) }],
         };
@@ -1070,6 +1153,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
+        // IT Glue's API stores the section-type value in the `resource_type`
+        // attribute (values `Document::Text` / `Document::Heading`). The
+        // `section-type` field is accepted but ignored, and passing a
+        // `relationships.resource` binding triggers a 400 for missing
+        // `resource_type`. Verified live 2026-04-23.
         const sectionTypeMap: Record<string, string> = {
           heading: "Document::Heading",
           text: "Document::Text",
@@ -1087,7 +1175,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             data: {
               type: "document-sections",
               attributes: {
-                "section-type": apiSectionType,
+                resource_type: apiSectionType,
                 content: args.content,
               },
             },
@@ -1147,6 +1235,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const published = await client.patch(`/documents/${args.document_id}/publish`);
         return {
           content: [{ type: "text", text: JSON.stringify(published, null, 2) }],
+        };
+      }
+
+      case "archive_document":
+      case "unarchive_document": {
+        if (!args?.document_id) {
+          return {
+            content: [{ type: "text", text: "Error: document_id is required" }],
+            isError: true,
+          };
+        }
+        // IT Glue toggles archive state via PATCH /documents/:id with the
+        // standard JSON:API document resource shape. There is no dedicated
+        // /archive sub-endpoint — only the `archived` boolean attribute.
+        const archived = name === "archive_document";
+        const result = await client.patch(`/documents/${args.document_id}`, {
+          data: {
+            type: "documents",
+            attributes: { archived },
+          },
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       }
 
@@ -1302,7 +1413,8 @@ async function startHttpTransport(): Promise<void> {
         return;
       }
 
-      // In gateway mode, extract credentials from headers
+      // In gateway mode, extract credentials from headers; otherwise undefined (env fallback)
+      let gatewayCredentials: GatewayCredentials | undefined;
       if (isGatewayMode) {
         const headers = req.headers as Record<string, string | string[] | undefined>;
         const apiKey =
@@ -1321,21 +1433,18 @@ async function startHttpTransport(): Promise<void> {
           return;
         }
 
-        process.env.ITGLUE_API_KEY = apiKey;
-
         const baseUrl = headers["x-itglue-base-url"] as string | undefined;
-        if (baseUrl) {
-          process.env.ITGLUE_BASE_URL = baseUrl;
-        }
-
         const region = headers["x-itglue-region"] as string | undefined;
-        if (region) {
-          process.env.ITGLUE_REGION = region;
-        }
+
+        gatewayCredentials = {
+          apiKey,
+          region: (region || "us") as ITGlueRegion,
+          baseUrl: baseUrl || undefined,
+        };
       }
 
       // Stateless: create fresh server + transport for each request
-      const server = createMcpServer();
+      const server = createMcpServer(gatewayCredentials);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -1403,4 +1512,7 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+// Only bootstrap the server when run as a process, not when imported for tests.
+if (process.env.NODE_ENV !== "test") {
+  main().catch(console.error);
+}

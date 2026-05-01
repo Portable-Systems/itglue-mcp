@@ -1,3 +1,24 @@
+## [1.5.3](https://github.com/wyre-technology/itglue-mcp/compare/v1.5.2...v1.5.3) (2026-04-07)
+
+
+### Bug Fixes
+
+* **ci:** deploy :latest tag, force revision via env var bump ([22fbae2](https://github.com/wyre-technology/itglue-mcp/commit/22fbae2fe71eca8fde7cfd9944c826f6bb550189))
+
+## [1.5.2](https://github.com/wyre-technology/itglue-mcp/compare/v1.5.1...v1.5.2) (2026-03-31)
+
+
+### Bug Fixes
+
+* **deploy:** replace node_compat with nodejs_compat for Wrangler v4 ([b9d580d](https://github.com/wyre-technology/itglue-mcp/commit/b9d580d2e2d9b0848256c0c0146e988bbb92fe95))
+
+## [1.5.1](https://github.com/wyre-technology/itglue-mcp/compare/v1.5.0...v1.5.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* **tools:** add document folder ID filter to search_documents ([747c448](https://github.com/wyre-technology/itglue-mcp/commit/747c448a027bf9d17dcb48e031a45c0122f1d035)), closes [wyre-technology/msp-claude-plugins#40](https://github.com/wyre-technology/msp-claude-plugins/issues/40)
+
 # [1.5.0](https://github.com/wyre-technology/itglue-mcp/compare/v1.4.0...v1.5.0) (2026-03-10)
 
 
