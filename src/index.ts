@@ -130,6 +130,103 @@ function pickConfigurationTypeList(items: Array<Record<string, unknown>>): Array
   }));
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeSectionText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value;
+}
+
+function extractImageLinks(section: Record<string, unknown>): string[] {
+  const imageLinks: string[] = [];
+  const imageCollections = [section["document-images"], (section.attributes as Record<string, unknown> | undefined)?.["document-images"]];
+
+  for (const collection of imageCollections) {
+    if (!Array.isArray(collection)) continue;
+    for (const image of collection) {
+      if (!image || typeof image !== "object") continue;
+      const imageAttributes = (image as Record<string, unknown>).attributes as Record<string, unknown> | undefined;
+      const originalSrc = normalizeSectionText(imageAttributes?.["original-src"]);
+      if (originalSrc && !originalSrc.includes("amazonaws.com")) {
+        imageLinks.push(originalSrc);
+      }
+    }
+  }
+
+  return Array.from(new Set(imageLinks));
+}
+
+function sectionToHtml(section: Record<string, unknown>): string {
+  const attributes = section.attributes as Record<string, unknown> | undefined;
+  const resourceType = normalizeSectionText(attributes?.["resource-type"] || attributes?.resourceType);
+  const content = normalizeSectionText(attributes?.content);
+  const sectionContent = content;
+
+  if (resourceType === "Document::Heading") {
+    const levelValue = Number(attributes?.level);
+    const level = Number.isFinite(levelValue) && levelValue >= 1 && levelValue <= 6 ? levelValue : 2;
+    return `<h${level}>${sectionContent || escapeHtml(normalizeSectionText(attributes?.name))}</h${level}>`;
+  }
+
+  if (resourceType === "Document::Gallery") {
+    const imageLinks = extractImageLinks(section);
+    const imageList = imageLinks.length > 0
+      ? `<ul>${imageLinks.map((link) => `<li><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></li>`).join("")}</ul>`
+      : "";
+    return `${sectionContent}${imageList}`;
+  }
+
+  if (resourceType === "Document::Step") {
+    const stepBody = sectionContent || content;
+    const imageLinks = extractImageLinks(section);
+    const imageList = imageLinks.length > 0
+      ? `<ul>${imageLinks.map((link) => `<li><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></li>`).join("")}</ul>`
+      : "";
+    return `<li>${stepBody}${imageList}</li>`;
+  }
+
+  return sectionContent || content;
+}
+
+function combineDocumentSectionsAsHtml(sections: Array<Record<string, unknown>>): string {
+  const parts: string[] = [];
+  let openStepList = false;
+
+  const closeStepList = () => {
+    if (openStepList) {
+      parts.push("</ol>");
+      openStepList = false;
+    }
+  };
+
+  for (const section of sections) {
+    const attributes = section.attributes as Record<string, unknown> | undefined;
+    const resourceType = normalizeSectionText(attributes?.["resource-type"] || attributes?.resourceType);
+
+    if (resourceType === "Document::Step") {
+      if (!openStepList) {
+        parts.push("<ol>");
+        openStepList = true;
+      }
+      parts.push(sectionToHtml(section));
+      continue;
+    }
+
+    closeStepList();
+    parts.push(sectionToHtml(section));
+  }
+
+  closeStepList();
+  return parts.join("\n");
+}
+
 // Simple IT Glue client
 export class ITGlueClient {
   private readonly apiKey: string;
@@ -617,7 +714,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       // Documents
       {
         name: "search_documents",
-        description: "Search for documents in IT Glue (scoped to an organization)",
+        description: "Search for documents in IT Glue (scoped to an organization). Returns only the first section's content as a short intro/description, not the full document.",
         inputSchema: {
           type: "object",
           properties: {
@@ -644,6 +741,78 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             document_folder_id: {
               type: "number",
               description: `Filter by document folder ID to search within a specific folder.${OPTIONAL_PARAM_NOTE}`,
+            },
+          },
+          required: ["organization_id"],
+        },
+      },
+      {
+        name: "list_locations",
+        description: "List all locations for a particular organization in IT Glue",
+        inputSchema: {
+          type: "object",
+          properties: {
+            organization_id: {
+              type: "number",
+              description: "Organization ID to list locations for",
+            },
+            /*name: {
+              type: "string",
+              description: `Filter by location name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
+            },*/
+            location_id: {
+              type: "number",
+              description: `Filter by location ID.${OPTIONAL_PARAM_NOTE}`,
+            },
+            sort: {
+              type: "string",
+              description: `Sort field. Must be one of: name, id, primary, created_at, updated_at.${OPTIONAL_PARAM_NOTE}`,
+            },
+            page_size: {
+              type: "number",
+              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
+            },
+            page_number: {
+              type: "number",
+              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
+            },
+          },
+          required: ["organization_id"],
+        },
+      },
+      {
+        name: "list_contacts",
+        description: "List all contacts for a particular organization in IT Glue",
+        inputSchema: {
+          type: "object",
+          properties: {
+            organization_id: {
+              type: "number",
+              description: "Organization ID to list contacts for",
+            },
+            contact_id: {
+              type: "number",
+              description: `Filter by contact ID.${OPTIONAL_PARAM_NOTE}`,
+            },
+            contact_type_id: {
+              type: "number",
+              description: `Filter by contact type ID.${OPTIONAL_PARAM_NOTE}`,
+            },
+            important: {
+              type: "boolean",
+              description: `Filter by important contacts.${OPTIONAL_PARAM_NOTE}`,
+            },
+            sort: {
+              type: "string",
+              description: `Sort field. Must be one of: first_name, last_name, id, created_at, updated_at.${OPTIONAL_PARAM_NOTE}`,
+            },
+            page_size: {
+              type: "number",
+              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
+            },
+            page_number: {
+              type: "number",
+              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["organization_id"],
@@ -692,7 +861,21 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       // Document Sections
       {
         name: "list_document_sections",
-        description: "List all sections of an IT Glue document in order. Use this to read document content before editing.",
+        description: "List all sections of an IT Glue document in order as full JSON section records, including section IDs and attributes. Use this to inspect or edit document structure before changing it.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            document_id: {
+              type: "number",
+              description: "The document ID",
+            },
+          },
+          required: ["document_id"],
+        },
+      },
+      {
+        name: "read_document_html",
+        description: "Read an IT Glue document as one combined HTML string built from its sections. Heading sections become h1-h6, text/step sections use rendered HTML, and galleries return image links.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1204,11 +1387,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             `/organizations/${args.organization_id}/relationships/documents`,
             params
           );
+          const compactResult = (result.data as Array<Record<string, unknown>>).map((doc) => {
+            const attributes = doc.attributes as Record<string, unknown> | undefined;
+            const content = Array.isArray(attributes?.content) ? attributes?.content : [];
+            const firstSection = content.length > 0 ? content[0] : undefined;
+
+            return {
+              ...doc,
+              attributes: {
+                ...attributes,
+                content: firstSection,
+              },
+            };
+          });
           return {
             content: [
               {
                 type: "text",
-                text: JSON.stringify(result, null, 2),
+                text: JSON.stringify(compactResult, null, 2),
               },
             ],
           };
@@ -1225,6 +1421,77 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
           throw err;
         }
+      }
+
+      case "list_locations": {
+        if (!args?.organization_id) {
+          return {
+            content: [{ type: "text", text: "Error: organization_id is required for list_locations" }],
+            isError: true,
+          };
+        }
+
+        const params: Record<string, unknown> = {};
+        const filter: Record<string, unknown> = {};
+
+        if (args?.location_id) filter.id = args.location_id;
+        if (args?.name) filter.name = args.name;
+
+        if (Object.keys(filter).length > 0) params.filter = filter;
+        if (args?.sort) params.sort = args.sort;
+        params.page = {
+          size: (args?.page_size as number) || 50,
+          number: (args?.page_number as number) || 1,
+        };
+
+        const result = await client.request(
+          `/organizations/${args.organization_id}/relationships/locations`,
+          params
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_contacts": {
+        if (!args?.organization_id) {
+          return {
+            content: [{ type: "text", text: "Error: organization_id is required for list_contacts" }],
+            isError: true,
+          };
+        }
+
+        const params: Record<string, unknown> = {};
+        const filter: Record<string, unknown> = {};
+
+        if (args?.contact_id) filter.id = args.contact_id;
+        if (args?.contact_type_id) filter.contactTypeId = args.contact_type_id;
+        if (args?.important !== undefined) filter.important = args.important;
+
+        if (Object.keys(filter).length > 0) params.filter = filter;
+        if (args?.sort) params.sort = args.sort;
+        params.page = {
+          size: (args?.page_size as number) || 50,
+          number: (args?.page_number as number) || 1,
+        };
+
+        const result = await client.request(
+          `/organizations/${args.organization_id}/relationships/contacts`,
+          params
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
       }
 
       case "get_document": {
@@ -1273,6 +1540,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      case "read_document_html": {
+        if (!args?.document_id) {
+          return {
+            content: [{ type: "text", text: "Error: document_id is required" }],
+            isError: true,
+          };
+        }
+        const result = await client.request(
+          `/documents/${args.document_id}/relationships/sections`,
+          {}
+        );
+        const sections = result.data as Array<Record<string, unknown>>;
+        const html = combineDocumentSectionsAsHtml(sections);
+        return {
+          content: [{ type: "text", text: html }],
         };
       }
 
