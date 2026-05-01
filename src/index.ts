@@ -28,6 +28,8 @@ const REGION_URLS: Record<ITGlueRegion, string> = {
   au: "https://api.au.itglue.com",
 };
 
+const OPTIONAL_PARAM_NOTE = " Optional; omit unless explicitly provided. Do not invent defaults.";
+
 // JSON:API types
 interface JsonApiResource {
   id: string;
@@ -374,31 +376,31 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
           properties: {
             /*name: {
               type: "string",
-              description: "Filter by organization name (exact match only, case sensitive)",
+              description: `Filter by organization name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
             },*/
             organization_type_id: {
               type: "number",
-              description: "Filter by organization type ID",
+              description: `Filter by organization type ID.${OPTIONAL_PARAM_NOTE}`,
             },
             organization_status_id: {
               type: "number",
-              description: "Filter by organization status ID",
+              description: `Filter by organization status ID.${OPTIONAL_PARAM_NOTE}`,
             },
             psa_id: {
               type: "string",
-              description: "Filter by PSA integration ID",
+              description: `Filter by PSA integration ID.${OPTIONAL_PARAM_NOTE}`,
             },
             page_size: {
               type: "number",
-              description: "Number of results per page (max 1000, default 50)",
+              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
             },
             page_number: {
               type: "number",
-              description: "Page number to retrieve (default 1)",
+              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
-              description: "Sort field (prefix with - for descending, e.g., '-name')",
+              description: `Sort field (prefix with - for descending, e.g., '-name').${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: [],
@@ -427,43 +429,43 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
           properties: {
             organization_id: {
               type: "number",
-              description: "Filter by organization ID",
+              description: `Filter by organization ID.${OPTIONAL_PARAM_NOTE}`,
             },
             /*name: {
               type: "string",
-              description: "Filter by configuration name (exact match only, case sensitive)",
+              description: `Filter by configuration name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
             },*/
             configuration_type_id: {
               type: "number",
-              description: "Filter by configuration type ID",
+              description: `Filter by configuration type ID.${OPTIONAL_PARAM_NOTE}`,
             },
             configuration_status_id: {
               type: "number",
-              description: "Filter by configuration status ID",
+              description: `Filter by configuration status ID.${OPTIONAL_PARAM_NOTE}`,
             },
             serial_number: {
               type: "string",
-              description: "Filter by serial number",
+              description: `Filter by serial number.${OPTIONAL_PARAM_NOTE}`,
             },
             rmm_id: {
               type: "string",
-              description: "Filter by RMM integration ID",
+              description: `Filter by RMM integration ID.${OPTIONAL_PARAM_NOTE}`,
             },
             psa_id: {
               type: "string",
-              description: "Filter by PSA integration ID",
+              description: `Filter by PSA integration ID.${OPTIONAL_PARAM_NOTE}`,
             },
             page_size: {
               type: "number",
-              description: "Number of results per page (max 1000, default 50)",
+              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
             },
             page_number: {
               type: "number",
-              description: "Page number to retrieve (default 1)",
+              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
-              description: "Sort field (prefix with - for descending)",
+              description: `Sort field (prefix with - for descending).${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: [],
@@ -492,35 +494,35 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
           properties: {
             organization_id: {
               type: "number",
-              description: "Filter by organization ID",
+              description: `Filter by organization ID.${OPTIONAL_PARAM_NOTE}`,
             },
             /*name: {
               type: "string",
-              description: "Filter by password entry name (exact match only, case sensitive)",
+              description: `Filter by password entry name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
             },*/
             password_category_id: {
               type: "number",
-              description: "Filter by password category ID",
+              description: `Filter by password category ID.${OPTIONAL_PARAM_NOTE}`,
             },
             url: {
               type: "string",
-              description: "Filter by URL",
+              description: `Filter by URL.${OPTIONAL_PARAM_NOTE}`,
             },
             username: {
               type: "string",
-              description: "Filter by username",
+              description: `Filter by username.${OPTIONAL_PARAM_NOTE}`,
             },
             page_size: {
               type: "number",
-              description: "Number of results per page (max 1000, default 50)",
+              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
             },
             page_number: {
               type: "number",
-              description: "Page number to retrieve (default 1)",
+              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
-              description: "Sort field (prefix with - for descending)",
+              description: `Sort field (prefix with - for descending).${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: [],
@@ -538,7 +540,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             },
             show_password: {
               type: "boolean",
-              description: "Whether to include the actual password value (default true)",
+              description: `Whether to include the actual password value (default true).${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["id"],
@@ -555,25 +557,25 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "number",
               description: "Organization ID (required — documents are scoped to organizations)",
             },
-            name: {
+            /*name: {
               type: "string",
-              description: "Filter by document name (partial match)",
-            },
+              description: `Filter by document name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
+            },*/
             page_size: {
               type: "number",
-              description: "Number of results per page (max 1000, default 50)",
+              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
             },
             page_number: {
               type: "number",
-              description: "Page number to retrieve (default 1)",
+              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
-              description: "Sort field (prefix with - for descending)",
+              description: `Sort field (prefix with - for descending).${OPTIONAL_PARAM_NOTE}`,
             },
             document_folder_id: {
               type: "number",
-              description: "Filter by document folder ID to search within a specific folder",
+              description: `Filter by document folder ID to search within a specific folder.${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["organization_id"],
@@ -613,7 +615,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             },
             content: {
               type: "string",
-              description: "Document content (HTML supported)",
+              description: `Document content (HTML supported).${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["organization_id", "name"],
@@ -748,7 +750,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
           properties: {
             organization_id: {
               type: "number",
-              description: "Filter by organization ID (optional — returns global types if omitted)",
+              description: `Filter by organization ID (optional — returns global types if omitted).${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: [],
@@ -766,23 +768,23 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             },
             organization_id: {
               type: "number",
-              description: "Filter by organization ID",
+              description: `Filter by organization ID.${OPTIONAL_PARAM_NOTE}`,
             },
             /*name: {
               type: "string",
-              description: "Filter by flexible asset name (exact match only, case sensitive)",
+              description: `Filter by flexible asset name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
             },*/
             page_size: {
               type: "number",
-              description: "Number of results per page (max 1000, default 50)",
+              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
             },
             page_number: {
               type: "number",
-              description: "Page number to retrieve (default 1)",
+              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
-              description: "Sort field (prefix with - for descending)",
+              description: `Sort field (prefix with - for descending).${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["flexible_asset_type_id"],
