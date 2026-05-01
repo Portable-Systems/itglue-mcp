@@ -315,21 +315,21 @@ function createMcpServer(): Server {
         inputSchema: {
           type: "object",
           properties: {
-            name: {
+            /*name: {
               type: "string",
-              description: "Optional parameter. Filter by organization name (exact match)",
-            },
+              description: "Filter by organization name (exact match only, case sensitive)",
+            },*/
             organization_type_id: {
               type: "number",
-              description: "Optional parameter. Filter by organization type ID",
+              description: "Filter by organization type ID",
             },
             organization_status_id: {
               type: "number",
-              description: "Optional parameter. Filter by organization status ID",
+              description: "Filter by organization status ID",
             },
             psa_id: {
               type: "string",
-              description: "Optional parameter. Filter by PSA integration ID",
+              description: "Filter by PSA integration ID",
             },
             page_size: {
               type: "number",
@@ -372,10 +372,10 @@ function createMcpServer(): Server {
               type: "number",
               description: "Filter by organization ID",
             },
-            name: {
+            /*name: {
               type: "string",
-              description: "Filter by configuration name (partial match)",
-            },
+              description: "Filter by configuration name (exact match only, case sensitive)",
+            },*/
             configuration_type_id: {
               type: "number",
               description: "Filter by configuration type ID",
@@ -437,10 +437,10 @@ function createMcpServer(): Server {
               type: "number",
               description: "Filter by organization ID",
             },
-            name: {
+            /*name: {
               type: "string",
-              description: "Filter by password entry name (partial match)",
-            },
+              description: "Filter by password entry name (exact match only, case sensitive)",
+            },*/
             password_category_id: {
               type: "number",
               description: "Filter by password category ID",
@@ -679,10 +679,10 @@ function createMcpServer(): Server {
               type: "number",
               description: "Filter by organization ID",
             },
-            name: {
+            /*name: {
               type: "string",
-              description: "Filter by flexible asset name (partial match)",
-            },
+              description: "Filter by flexible asset name (exact match only, case sensitive)",
+            },*/
             page_size: {
               type: "number",
               description: "Number of results per page (max 1000, default 50)",
