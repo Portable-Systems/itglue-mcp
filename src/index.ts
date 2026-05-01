@@ -107,6 +107,29 @@ function buildFilterParams(filter: Record<string, unknown>): Record<string, stri
   return result;
 }
 
+function pickIdAndNameList(items: Array<Record<string, unknown>>): Array<{ id: unknown; name: unknown }> {
+  return items.map((item) => ({
+    id: item.id,
+    name: (item.attributes as Record<string, unknown> | undefined)?.name,
+  }));
+}
+
+function pickPasswordCategoryList(items: Array<Record<string, unknown>>): Array<{ id: unknown; name: unknown; passwordsCount: unknown }> {
+  return items.map((item) => ({
+    id: item.id,
+    name: (item.attributes as Record<string, unknown> | undefined)?.name,
+    passwordsCount: (item.attributes as Record<string, unknown> | undefined)?.["passwords-count"],
+  }));
+}
+
+function pickConfigurationTypeList(items: Array<Record<string, unknown>>): Array<{ id: unknown; name: unknown; configurationsCount: unknown }> {
+  return items.map((item) => ({
+    id: item.id,
+    name: (item.attributes as Record<string, unknown> | undefined)?.name,
+    configurationsCount: (item.attributes as Record<string, unknown> | undefined)?.["configurations-count"],
+  }));
+}
+
 // Simple IT Glue client
 export class ITGlueClient {
   private readonly apiKey: string;
@@ -403,6 +426,51 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               description: `Sort field (prefix with - for descending, e.g., '-name').${OPTIONAL_PARAM_NOTE}`,
             },
           },
+          required: [],
+        },
+      },
+      {
+        name: "list_organization_statuses",
+        description: "List all IT Glue organization statuses and return only id and name",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: "list_organization_types",
+        description: "List all IT Glue organization types and return only id and name",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: "list_password_categories",
+        description: "List all IT Glue password categories and return only id, name, and passwords count",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: "list_configuration_statuses",
+        description: "List all IT Glue configuration statuses and return only id and name",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: "list_configuration_types",
+        description: "List all IT Glue configuration types and return only id, name, and configurations count",
+        inputSchema: {
+          type: "object",
+          properties: {},
           required: [],
         },
       },
@@ -861,6 +929,66 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_organization_statuses": {
+        const result = await client.request("/organization_statuses", { page: { size: 1000, number: 1 } });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(pickIdAndNameList(result.data as Array<Record<string, unknown>>), null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_organization_types": {
+        const result = await client.request("/organization_types", { page: { size: 1000, number: 1 } });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(pickIdAndNameList(result.data as Array<Record<string, unknown>>), null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_password_categories": {
+        const result = await client.request("/password_categories", { page: { size: 1000, number: 1 } });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(pickPasswordCategoryList(result.data as Array<Record<string, unknown>>), null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_configuration_statuses": {
+        const result = await client.request("/configuration_statuses", { page: { size: 1000, number: 1 } });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(pickIdAndNameList(result.data as Array<Record<string, unknown>>), null, 2),
+            },
+          ],
+        };
+      }
+
+      case "list_configuration_types": {
+        const result = await client.request("/configuration_types", { page: { size: 1000, number: 1 } });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(pickConfigurationTypeList(result.data as Array<Record<string, unknown>>), null, 2),
             },
           ],
         };
