@@ -1112,9 +1112,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "list_organization_types": {
         const result = await client.request("/organization_types", { page: { size: 1000, number: 1 } });
+        console.error("list_organization_types raw first item:", JSON.stringify(result.data[0], null, 2));
         const organizationTypes = (result.data as Array<Record<string, unknown>>).map((item) => ({
           id: item.id,
-          name: (item.attributes as Record<string, unknown> | undefined)?.name,
+          name: item.name,
         }));
         return {
           content: [
