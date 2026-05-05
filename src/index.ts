@@ -1098,7 +1098,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await client.request("/organization_statuses", { page: { size: 1000, number: 1 } });
         const organizationStatuses = (result.data as Array<Record<string, unknown>>).map((item) => ({
           id: item.id,
-          name: (item.attributes as Record<string, unknown> | undefined)?.name,
+          name: item.name,
         }));
         return {
           content: [
@@ -1112,7 +1112,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "list_organization_types": {
         const result = await client.request("/organization_types", { page: { size: 1000, number: 1 } });
-        console.error("list_organization_types raw first item:", JSON.stringify(result.data[0], null, 2));
         const organizationTypes = (result.data as Array<Record<string, unknown>>).map((item) => ({
           id: item.id,
           name: item.name,
@@ -1131,8 +1130,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await client.request("/password_categories", { page: { size: 1000, number: 1 } });
         const passwordCategories = (result.data as Array<Record<string, unknown>>).map((item) => ({
           id: item.id,
-          name: (item.attributes as Record<string, unknown> | undefined)?.name,
-          passwordsCount: (item.attributes as Record<string, unknown> | undefined)?.["passwords-count"],
+          name: item.name,
+          passwordsCount: item.passwordsCount,
         }));
         return {
           content: [
@@ -1148,7 +1147,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await client.request("/configuration_statuses", { page: { size: 1000, number: 1 } });
         const configurationStatuses = (result.data as Array<Record<string, unknown>>).map((item) => ({
           id: item.id,
-          name: (item.attributes as Record<string, unknown> | undefined)?.name,
+          name: item.name,
         }));
         return {
           content: [
@@ -1164,8 +1163,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await client.request("/configuration_types", { page: { size: 1000, number: 1 } });
         const configurationTypes = (result.data as Array<Record<string, unknown>>).map((item) => ({
           id: item.id,
-          name: (item.attributes as Record<string, unknown> | undefined)?.name,
-          configurationsCount: (item.attributes as Record<string, unknown> | undefined)?.["configurations-count"],
+          name: item.name,
+          configurationsCount: item.configurationsCount,
         }));
         return {
           content: [
