@@ -99,14 +99,14 @@ function deserializeResource(resource: JsonApiResource): Record<string, unknown>
 function buildFilterParams(filter: Record<string, unknown>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(filter)) {
-    if (value !== undefined && value !== null) {
+    if (value !== undefined) {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-          if (nestedValue !== undefined && nestedValue !== null) {
-            result[`${camelToKebab(key)}[${nestedKey}]`] = String(nestedValue);
+          if (nestedValue !== undefined) {
+            result[`${camelToKebab(key)}[${nestedKey}]`] = nestedValue === null ? "null" : String(nestedValue);
           }
         }
-      } else {
+      } else if (value !== null) {
         const kebabKey = camelToKebab(key);
         result[kebabKey] = String(value);
       }
