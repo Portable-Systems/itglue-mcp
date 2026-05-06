@@ -121,9 +121,29 @@ function normalizeSectionText(value: unknown): string {
   return value;
 }
 
+function extractSerializedResource(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  return (record.resource && typeof record.resource === "object")
+    ? (record.resource as Record<string, unknown>)
+    : record;
+}
+
+function extractDocumentSectionRecord(value: unknown): Record<string, unknown> | undefined {
+  const serialized = extractSerializedResource(value);
+  if (!serialized) return undefined;
+
+  return {
+    ...serialized,
+    ...((serialized.content && typeof serialized.content === "object" && !Array.isArray(serialized.content))
+      ? (serialized.content as Record<string, unknown>)
+      : {}),
+  };
+}
+
 function extractImageLinks(section: Record<string, unknown>): string[] {
   const imageLinks: string[] = [];
-  const imageCollections = [section["document-images"], (section.attributes as Record<string, unknown> | undefined)?.["document-images"]];
+  const imageCollections = [section["document-images"], section.documentImages];
 
   for (const collection of imageCollections) {
     if (!Array.isArray(collection)) continue;
@@ -141,7 +161,7 @@ function extractImageLinks(section: Record<string, unknown>): string[] {
 }
 
 function sectionToHtml(section: Record<string, unknown>): string {
-  const attributes = section.attributes as Record<string, unknown> | undefined;
+  const attributes = extractDocumentSectionRecord(section) ?? section;
   const resourceType = normalizeSectionText(attributes?.["resource-type"] || attributes?.resourceType);
   const content = normalizeSectionText(attributes?.content);
   const sectionContent = content;
@@ -184,7 +204,7 @@ function combineDocumentSectionsAsHtml(sections: Array<Record<string, unknown>>)
   };
 
   for (const section of sections) {
-    const attributes = section.attributes as Record<string, unknown> | undefined;
+    const attributes = extractDocumentSectionRecord(section) ?? section;
     const resourceType = normalizeSectionText(attributes?.["resource-type"] || attributes?.resourceType);
 
     if (resourceType === "Document::Step") {
@@ -1164,7 +1184,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const configurationTypes = (result.data as Array<Record<string, unknown>>).map((item) => ({
           id: item.id,
           name: item.name,
-          configurationsCount: item.configurationsCount,
         }));
         return {
           content: [
@@ -1387,16 +1406,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             params
           );
           const compactResult = (result.data as Array<Record<string, unknown>>).map((doc) => {
-            const attributes = doc.attributes as Record<string, unknown> | undefined;
-            const content = Array.isArray(attributes?.content) ? attributes?.content : [];
+            const content = Array.isArray(doc?.content) ? doc?.content : [];
             const firstSection = content.length > 0 ? content[0] : undefined;
+            const firstSectionRecord = extractSerializedResource(firstSection);
+            const firstSectionHtml = normalizeSectionText(firstSectionRecord?.content);
 
             return {
               ...doc,
-              attributes: {
-                ...attributes,
-                content: firstSection,
-              },
+              content: firstSectionHtml,
             };
           });
           return {
