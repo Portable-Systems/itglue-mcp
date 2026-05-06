@@ -100,8 +100,16 @@ function buildFilterParams(filter: Record<string, unknown>): Record<string, stri
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(filter)) {
     if (value !== undefined && value !== null) {
-      const kebabKey = camelToKebab(key);
-      result[kebabKey] = String(value);
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+          if (nestedValue !== undefined && nestedValue !== null) {
+            result[`${camelToKebab(key)}[${nestedKey}]`] = String(nestedValue);
+          }
+        }
+      } else {
+        const kebabKey = camelToKebab(key);
+        result[kebabKey] = String(value);
+      }
     }
   }
   return result;
@@ -737,7 +745,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             },
             document_folder_id: {
               type: "number",
-              description: `Filter by document folder ID to search within a specific folder.${OPTIONAL_PARAM_NOTE}`,
+              description: `Filter by document folder ID to search within a specific folder, excluding subfolders. 0 is the root folder of an organization.${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["organization_id"],
@@ -1391,7 +1399,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const filter: Record<string, unknown> = {};
 
         if (args?.name) filter.name = args.name;
-        if (args?.document_folder_id) filter.documentFolderId = args.document_folder_id;
+        if (args?.document_folder_id) {
+          filter.documentFolderId = args.document_folder_id;
+        } else {
+          filter.documentFolderId = { ne: null };
+        }
 
         if (Object.keys(filter).length > 0) params.filter = filter;
         if (args?.sort) params.sort = args.sort;
@@ -1410,10 +1422,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const firstSection = content.length > 0 ? content[0] : undefined;
             const firstSectionRecord = extractSerializedResource(firstSection);
             const firstSectionHtml = normalizeSectionText(firstSectionRecord?.content);
+            const { content: _content, ...docWithoutContent } = doc;
 
             return {
-              ...doc,
-              content: firstSectionHtml,
+              ...docWithoutContent,
+              firstSectionContent: firstSectionHtml,
             };
           });
           return {
