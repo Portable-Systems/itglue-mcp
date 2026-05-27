@@ -515,10 +515,10 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Filter by PSA integration ID.${OPTIONAL_PARAM_NOTE}`,
             },
-            page_size: {
+            /*page_size: {
               type: "number",
               description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },
+            },*/
             page_number: {
               type: "number",
               description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
@@ -625,10 +625,10 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Filter by PSA integration ID.${OPTIONAL_PARAM_NOTE}`,
             },
-            page_size: {
+            /*page_size: {
               type: "number",
               description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },
+            },*/
             page_number: {
               type: "number",
               description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
@@ -682,10 +682,10 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Filter by username.${OPTIONAL_PARAM_NOTE}`,
             },
-            page_size: {
+            /*page_size: {
               type: "number",
               description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },
+            },*/
             page_number: {
               type: "number",
               description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
@@ -731,10 +731,10 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Filter by document name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
             },*/
-            page_size: {
+            /*page_size: {
               type: "number",
               description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },
+            },*/
             page_number: {
               type: "number",
               description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
@@ -773,10 +773,10 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Sort field. Must be one of: name, id, primary, created_at, updated_at.${OPTIONAL_PARAM_NOTE}`,
             },
-            page_size: {
+            /*page_size: {
               type: "number",
               description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },
+            },*/
             page_number: {
               type: "number",
               description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
@@ -811,10 +811,10 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Sort field. Must be one of: first_name, last_name, id, created_at, updated_at.${OPTIONAL_PARAM_NOTE}`,
             },
-            page_size: {
+            /*page_size: {
               type: "number",
               description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },
+            },*/
             page_number: {
               type: "number",
               description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
@@ -1030,10 +1030,10 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Filter by flexible asset name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
             },*/
-            page_size: {
+            /*page_size: {
               type: "number",
               description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },
+            },*/
             page_number: {
               type: "number",
               description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
