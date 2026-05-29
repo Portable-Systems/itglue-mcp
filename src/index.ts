@@ -1250,7 +1250,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                   {
                     type: "text",
-                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name }))}`,
+                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name })))}`,
                   },
                 ],
               };
@@ -1331,7 +1331,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                   {
                     type: "text",
-                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name }))}`,
+                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name })))}`,
                   },
                 ],
               };
