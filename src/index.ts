@@ -1116,7 +1116,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(result),
             },
           ],
         };
@@ -1132,7 +1132,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(organizationStatuses, null, 2),
+              text: JSON.stringify(organizationStatuses),
             },
           ],
         };
@@ -1148,7 +1148,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(organizationTypes, null, 2),
+              text: JSON.stringify(organizationTypes),
             },
           ],
         };
@@ -1165,7 +1165,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(passwordCategories, null, 2),
+              text: JSON.stringify(passwordCategories),
             },
           ],
         };
@@ -1181,7 +1181,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(configurationStatuses, null, 2),
+              text: JSON.stringify(configurationStatuses),
             },
           ],
         };
@@ -1197,7 +1197,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(configurationTypes, null, 2),
+              text: JSON.stringify(configurationTypes),
             },
           ],
         };
@@ -1215,7 +1215,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(org, null, 2),
+              text: JSON.stringify(org),
             },
           ],
         };
@@ -1250,7 +1250,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                   {
                     type: "text",
-                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name })), null, 2)}`,
+                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name }))}`,
                   },
                 ],
               };
@@ -1278,7 +1278,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(result),
             },
           ],
         };
@@ -1296,7 +1296,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(config, null, 2),
+              text: JSON.stringify(config),
             },
           ],
         };
@@ -1331,7 +1331,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                   {
                     type: "text",
-                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name })), null, 2)}`,
+                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name }))}`,
                   },
                 ],
               };
@@ -1359,7 +1359,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(result),
             },
           ],
         };
@@ -1380,7 +1380,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(password, null, 2),
+              text: JSON.stringify(password),
             },
           ],
         };
@@ -1433,7 +1433,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [
               {
                 type: "text",
-                text: JSON.stringify(compactResult, null, 2),
+                text: JSON.stringify(compactResult),
               },
             ],
           };
@@ -1481,7 +1481,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(result),
             },
           ],
         };
@@ -1517,7 +1517,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify(result),
             },
           ],
         };
@@ -1534,7 +1534,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           `/organizations/${args.organization_id}/relationships/documents/${args.id}`
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(doc, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(doc) }],
         };
       }
 
@@ -1551,7 +1551,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: args.content as string | undefined,
         });
         return {
-          content: [{ type: "text", text: JSON.stringify(newDoc, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(newDoc) }],
         };
       }
 
@@ -1568,7 +1568,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           {}
         );
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(result) }],
         };
       }
 
