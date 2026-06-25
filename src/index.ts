@@ -824,6 +824,24 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
         },
       },
       {
+        name: "get_contact",
+        description: "Get a specific contact by ID from IT Glue",
+        inputSchema: {
+          type: "object",
+          properties: {
+            organization_id: {
+              type: "number",
+              description: "Organization ID that owns the contact",
+            },
+            id: {
+              type: "string",
+              description: "The contact ID",
+            },
+          },
+          required: ["organization_id", "id"],
+        },
+      },
+      {
         name: "get_document",
         description: "Get a specific document by ID from IT Glue",
         inputSchema: {
@@ -1044,6 +1062,28 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             },
           },
           required: ["flexible_asset_type_id"],
+        },
+      },
+      {
+        name: "get_flexible_asset",
+        description: "Get a specific flexible asset by ID from IT Glue",
+        inputSchema: {
+          type: "object",
+          properties: {
+            flexible_asset_type_id: {
+              type: "number",
+              description: "The flexible asset type ID",
+            },
+            organization_id: {
+              type: "number",
+              description: "Organization ID that owns the flexible asset",
+            },
+            id: {
+              type: "string",
+              description: "The flexible asset ID",
+            },
+          },
+          required: ["flexible_asset_type_id", "organization_id", "id"],
         },
       },
       // Health check
@@ -1291,7 +1331,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
-        const config = await client.get(`/configurations/${args.id}`);
+        const config = await client.get(`/configurations/${args.id}`, {
+          include: "configuration_interfaces,related_items",
+        });
         return {
           content: [
             {
@@ -1374,6 +1416,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const showPassword = args?.show_password !== false;
         const password = await client.get(`/passwords/${args.id}`, {
+          include: "related_items",
           show_password: showPassword,
         });
         return {
@@ -1523,6 +1566,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "get_contact": {
+        if (!args?.organization_id || !args?.id) {
+          return {
+            content: [{ type: "text", text: "Error: organization_id and id are required" }],
+            isError: true,
+          };
+        }
+        const contact = await client.get(
+          `/organizations/${args.organization_id}/relationships/contacts/${args.id}`,
+          {
+            include: "related_items",
+          }
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(contact) }],
+        };
+      }
+
       case "get_document": {
         if (!args?.organization_id || !args?.id) {
           return {
@@ -1531,7 +1592,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
         const doc = await client.get(
-          `/organizations/${args.organization_id}/relationships/documents/${args.id}`
+          `/organizations/${args.organization_id}/relationships/documents/${args.id}`,
+          {
+            include: "related_items",
+          }
         );
         return {
           content: [{ type: "text", text: JSON.stringify(doc) }],
@@ -1731,7 +1795,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
-
         const params: Record<string, unknown> = {};
         const filter: Record<string, unknown> = {
           flexibleAssetTypeId: args.flexible_asset_type_id,
@@ -1755,6 +1818,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               text: JSON.stringify(result, null, 2),
             },
           ],
+        };
+      }
+
+      case "get_flexible_asset": {
+        if (!args?.flexible_asset_type_id || !args?.organization_id || !args?.id) {
+          return {
+            content: [{ type: "text", text: "Error: flexible_asset_type_id, organization_id, and id are required" }],
+            isError: true,
+          };
+        }
+        const flexibleAsset = await client.get(
+          `/flexible_asset_types/${args.flexible_asset_type_id}/relationships/flexible_assets/${args.id}`,
+          {
+            include: "related_items",
+          }
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(flexibleAsset) }],
         };
       }
 

@@ -301,6 +301,7 @@ describe("Tool Definitions", () => {
     { name: "archive_document", requiredFields: ["document_id"], properties: ["document_id"] },
     { name: "unarchive_document", requiredFields: ["document_id"], properties: ["document_id"] },
     { name: "search_flexible_assets", requiredFields: ["flexible_asset_type_id"], properties: ["flexible_asset_type_id", "organization_id", "name", "page_size", "page_number", "sort"] },
+    { name: "get_flexible_asset", requiredFields: ["flexible_asset_type_id", "organization_id", "id"], properties: ["flexible_asset_type_id", "organization_id", "id"] },
     { name: "list_flexible_asset_types", requiredFields: [], properties: ["organization_id"] },
     { name: "itglue_health_check", requiredFields: [] as string[], properties: [] as string[] },
   ];
@@ -473,7 +474,7 @@ describe("Tool Handler Integration", () => {
 
       mockFetch.mockResolvedValueOnce(createMockResponse(mockData));
 
-      const response = await fetch("https://api.itglue.com/organizations/12345");
+      const response = await fetch("https://api.itglue.com/organizations/12345?include=related_items");
       const json = (await response.json()) as JsonApiResponse;
 
       expect((json.data as JsonApiResource).id).toBe("12345");
@@ -562,7 +563,7 @@ describe("Tool Handler Integration", () => {
 
       mockFetch.mockResolvedValueOnce(createMockResponse(mockData));
 
-      const response = await fetch("https://api.itglue.com/configurations/99999");
+      const response = await fetch("https://api.itglue.com/configurations/99999?include=configuration_interfaces,related_items");
       const json = (await response.json()) as JsonApiResponse;
 
       expect((json.data as JsonApiResource).id).toBe("99999");
@@ -637,7 +638,7 @@ describe("Tool Handler Integration", () => {
 
       mockFetch.mockResolvedValueOnce(createMockResponse(mockData));
 
-      const response = await fetch("https://api.itglue.com/passwords/55555?show_password=true");
+      const response = await fetch("https://api.itglue.com/passwords/55555?include=related_items&show_password=true");
       const json = (await response.json()) as JsonApiResponse;
 
       expect((json.data as JsonApiResource).attributes?.password).toBe("secret123");
@@ -658,10 +659,55 @@ describe("Tool Handler Integration", () => {
 
       mockFetch.mockResolvedValueOnce(createMockResponse(mockData));
 
-      const response = await fetch("https://api.itglue.com/passwords/55555?show_password=false");
+      const response = await fetch("https://api.itglue.com/passwords/55555?include=related_items&show_password=false");
       const json = (await response.json()) as JsonApiResponse;
 
       expect((json.data as JsonApiResource).attributes?.password).toBeUndefined();
+    });
+  });
+
+  describe("get_contact", () => {
+    it("should get a single contact by ID", async () => {
+      const mockData: JsonApiResponse = {
+        data: {
+          id: "777",
+          type: "contacts",
+          attributes: {
+            first_name: "Ada",
+            last_name: "Lovelace",
+          },
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockData));
+
+      const response = await fetch("https://api.itglue.com/organizations/123/relationships/contacts/777?include=related_items");
+      const json = (await response.json()) as JsonApiResponse;
+
+      expect((json.data as JsonApiResource).id).toBe("777");
+      expect((json.data as JsonApiResource).attributes?.first_name).toBe("Ada");
+    });
+  });
+
+  describe("get_flexible_asset", () => {
+    it("should get a single flexible asset by ID", async () => {
+      const mockData: JsonApiResponse = {
+        data: {
+          id: "888",
+          type: "flexible-assets",
+          attributes: {
+            name: "Office Router",
+          },
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockData));
+
+      const response = await fetch("https://api.itglue.com/flexible_asset_types/5/relationships/flexible_assets/888?include=related_items");
+      const json = (await response.json()) as JsonApiResponse;
+
+      expect((json.data as JsonApiResource).id).toBe("888");
+      expect((json.data as JsonApiResource).attributes?.name).toBe("Office Router");
     });
   });
 
@@ -674,7 +720,7 @@ describe("Tool Handler Integration", () => {
 
       mockFetch.mockResolvedValueOnce(createMockResponse(mockData));
 
-      const response = await fetch("https://api.itglue.com/organizations/123/relationships/documents?page[size]=50&page[number]=1");
+      const response = await fetch("https://api.itglue.com/organizations/123/relationships/documents?include=related_items&page[size]=50&page[number]=1");
       const json = (await response.json()) as JsonApiResponse;
 
       expect((json.data as JsonApiResource[]).length).toBe(2);
