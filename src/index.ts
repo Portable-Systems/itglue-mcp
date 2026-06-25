@@ -53,6 +53,7 @@ interface JsonApiResponse {
     detail?: string;
     status?: string;
   }>;
+  [key: string]: unknown;
 }
 
 interface PaginationMeta {
@@ -61,6 +62,24 @@ interface PaginationMeta {
   prevPage: number | null;
   totalPages: number;
   totalCount: number;
+}
+
+interface JsonApiDocument<T> {
+  data: T[];
+  meta: PaginationMeta;
+  included?: JsonApiResource[];
+  [key: string]: unknown;
+}
+
+interface JsonApiSingleDocument<T> {
+  data: T;
+  included?: JsonApiResource[];
+  errors?: Array<{
+    title?: string;
+    detail?: string;
+    status?: string;
+  }>;
+  [key: string]: unknown;
 }
 
 // Utility functions for JSON:API
@@ -269,7 +288,7 @@ export class ITGlueClient {
   async request<T>(
     path: string,
     params: Record<string, unknown> = {}
-  ): Promise<{ data: T[]; meta: PaginationMeta }> {
+  ): Promise<JsonApiDocument<T>> {
     const url = `${this.baseUrl}${path}${this.buildQueryString(params)}`;
 
     const response = await fetch(url, {
@@ -305,12 +324,22 @@ export class ITGlueClient {
       totalCount: json.meta?.["total-count"] || data.length,
     };
 
-    return { data: data as T[], meta };
+    const { data: _data, meta: _meta, ...rest } = json;
+    return {
+      ...rest,
+      data: data as T[],
+      meta
+    };
   }
 
-  async get<T>(path: string, params: Record<string, unknown> = {}): Promise<T> {
-    const result = await this.request<T>(path, params);
-    return result as unknown as T;
+  async get<T>(path: string, params: Record<string, unknown> = {}): Promise<JsonApiSingleDocument<T>> {
+    const document = await this.request<T>(path, params);
+    const [resource] = document.data;
+    const { meta: _meta, ...rest } = document;
+    return {
+      ...rest,
+      data: resource as T,
+    };
   }
 
   async post<T>(path: string, body: Record<string, unknown>): Promise<T> {
