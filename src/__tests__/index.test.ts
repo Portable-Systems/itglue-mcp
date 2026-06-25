@@ -301,7 +301,7 @@ describe("Tool Definitions", () => {
     { name: "archive_document", requiredFields: ["document_id"], properties: ["document_id"] },
     { name: "unarchive_document", requiredFields: ["document_id"], properties: ["document_id"] },
     { name: "search_flexible_assets", requiredFields: ["flexible_asset_type_id"], properties: ["flexible_asset_type_id", "organization_id", "name", "page_size", "page_number", "sort"] },
-    { name: "get_flexible_asset", requiredFields: ["flexible_asset_type_id", "organization_id", "id"], properties: ["flexible_asset_type_id", "organization_id", "id"] },
+    { name: "get_flexible_asset", requiredFields: ["id"], properties: ["id"] },
     { name: "list_flexible_asset_types", requiredFields: [], properties: ["organization_id"] },
     { name: "itglue_health_check", requiredFields: [] as string[], properties: [] as string[] },
   ];

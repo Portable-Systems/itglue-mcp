@@ -310,7 +310,7 @@ export class ITGlueClient {
 
   async get<T>(path: string, params: Record<string, unknown> = {}): Promise<T> {
     const result = await this.request<T>(path, params);
-    return result.data[0];
+    return result as unknown as T;
   }
 
   async post<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -1070,20 +1070,12 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
         inputSchema: {
           type: "object",
           properties: {
-            flexible_asset_type_id: {
-              type: "number",
-              description: "The flexible asset type ID",
-            },
-            organization_id: {
-              type: "number",
-              description: "Organization ID that owns the flexible asset",
-            },
             id: {
               type: "string",
               description: "The flexible asset ID",
             },
           },
-          required: ["flexible_asset_type_id", "organization_id", "id"],
+          required: ["id"],
         },
       },
       // Health check
@@ -1822,14 +1814,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "get_flexible_asset": {
-        if (!args?.flexible_asset_type_id || !args?.organization_id || !args?.id) {
+        if (!args?.id) {
           return {
-            content: [{ type: "text", text: "Error: flexible_asset_type_id, organization_id, and id are required" }],
+            content: [{ type: "text", text: "Error: id is required" }],
             isError: true,
           };
         }
         const flexibleAsset = await client.get(
-          `/flexible_asset_types/${args.flexible_asset_type_id}/relationships/flexible_assets/${args.id}`,
+          `/flexible_assets/${args.id}`,
           {
             include: "related_items",
           }
