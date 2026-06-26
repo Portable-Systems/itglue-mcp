@@ -672,7 +672,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "get_configuration",
-        description: "Get a specific configuration (device/asset) by ID from IT Glue",
+        description: "Get a specific configuration (device/asset) by ID from IT Glue with extended details",
         inputSchema: {
           type: "object",
           properties: {
@@ -854,7 +854,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "get_contact",
-        description: "Get a specific contact by ID from IT Glue",
+        description: "Get a specific contact by ID from IT Glue with extended details",
         inputSchema: {
           type: "object",
           properties: {
@@ -872,7 +872,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "get_document",
-        description: "Get a specific document by ID from IT Glue",
+        description: "Get a specific document by ID from IT Glue with extended details",
         inputSchema: {
           type: "object",
           properties: {
@@ -1095,7 +1095,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "get_flexible_asset",
-        description: "Get a specific flexible asset by ID from IT Glue",
+        description: "Get a specific flexible asset by ID from IT Glue with extended details",
         inputSchema: {
           type: "object",
           properties: {
@@ -1353,7 +1353,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
         const config = await client.get(`/configurations/${args.id}`, {
-          include: "configuration_interfaces,related_items",
+          include: "related_items,configuration_interfaces,from_configuration_connections,to_configuration_connections",
         });
         return {
           content: [
