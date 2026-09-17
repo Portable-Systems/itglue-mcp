@@ -11,6 +11,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 // Mock fetch globally before any imports
 const mockFetch = vi.fn();
@@ -19,7 +21,7 @@ vi.stubGlobal("fetch", mockFetch);
 // Importing from ../index pulls in the production helpers. The module guards
 // its main() bootstrap on NODE_ENV=test so this import does not start an MCP
 // server during tests.
-import { createDocumentWithContent, ITGlueClient } from "../index.js";
+import { createDocumentWithContent, createMcpServer, ITGlueClient } from "../index.js";
 
 // Store original env vars
 const originalEnv = { ...process.env };
@@ -283,42 +285,106 @@ describe("ITGlueClient", () => {
 });
 
 describe("Tool Definitions", () => {
-  const tools = [
-    { name: "search_organizations", requiredFields: [] as string[], properties: ["name", "organization_type_id", "organization_status_id", "psa_id", "page_size", "page_number", "sort"] },
-    { name: "get_organization", requiredFields: ["id"], properties: ["id"] },
-    { name: "search_configurations", requiredFields: [] as string[], properties: ["organization_id", "name", "configuration_type_id", "configuration_status_id", "serial_number", "rmm_id", "psa_id", "page_size", "page_number", "sort"] },
-    { name: "get_configuration", requiredFields: ["id"], properties: ["id"] },
-    { name: "search_passwords", requiredFields: [] as string[], properties: ["organization_id", "name", "password_category_id", "url", "username", "page_size", "page_number", "sort"] },
-    { name: "get_password", requiredFields: ["id"], properties: ["id", "show_password"] },
-    { name: "search_documents", requiredFields: ["organization_id"] as string[], properties: ["organization_id", "name", "page_size", "page_number", "sort"] },
-    { name: "get_document", requiredFields: ["organization_id", "id"], properties: ["organization_id", "id"] },
-    { name: "create_document", requiredFields: ["organization_id", "name"], properties: ["organization_id", "name", "content"] },
-    { name: "list_document_sections", requiredFields: ["document_id"], properties: ["document_id"] },
-    { name: "create_document_section", requiredFields: ["document_id", "section_type", "content"], properties: ["document_id", "section_type", "content"] },
-    { name: "update_document_section", requiredFields: ["document_id", "section_id", "content"], properties: ["document_id", "section_id", "content"] },
-    { name: "delete_document_section", requiredFields: ["document_id", "section_id"], properties: ["document_id", "section_id"] },
-    { name: "publish_document", requiredFields: ["document_id"], properties: ["document_id"] },
-    { name: "archive_document", requiredFields: ["document_id"], properties: ["document_id"] },
-    { name: "unarchive_document", requiredFields: ["document_id"], properties: ["document_id"] },
-    { name: "search_flexible_assets", requiredFields: ["flexible_asset_type_id"], properties: ["flexible_asset_type_id", "organization_id", "name", "page_size", "page_number", "sort"] },
-    { name: "get_flexible_asset", requiredFields: ["id"], properties: ["id"] },
-    { name: "list_flexible_asset_types", requiredFields: [], properties: ["organization_id"] },
-    { name: "itglue_health_check", requiredFields: [] as string[], properties: [] as string[] },
-  ];
+  async function connectTestClient() {
+    const server = createMcpServer({ apiKey: "test-api-key", region: "us" });
+    const client = new Client({ name: "itglue-mcp-test", version: "1.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+    return { client, server };
+  }
 
-  it.each(tools)("should define $name tool correctly", ({ name, requiredFields, properties }) => {
-    expect(name).toBeTruthy();
-    expect(Array.isArray(requiredFields)).toBe(true);
-    expect(Array.isArray(properties)).toBe(true);
+  it("publishes the real 29-tool inventory with guarded index schemas", async () => {
+    const { client, server } = await connectTestClient();
 
-    // Verify required fields are subset of properties
-    requiredFields.forEach((field) => {
-      expect(properties).toContain(field);
-    });
+    try {
+      const { tools } = await client.listTools();
+      expect(tools).toHaveLength(29);
+      expect(new Set(tools.map((tool) => tool.name)).size).toBe(29);
+
+      for (const toolName of [
+        "search_organizations",
+        "search_configurations",
+        "search_passwords",
+        "search_documents",
+        "list_locations",
+        "list_contacts",
+        "search_flexible_assets",
+      ]) {
+        const tool = tools.find((candidate) => candidate.name === toolName);
+        expect(tool, `${toolName} should be registered`).toBeDefined();
+        expect(tool?.description).toContain("index page");
+        expect(tool?.inputSchema.properties).not.toHaveProperty("name");
+        expect(tool?.inputSchema.properties).not.toHaveProperty("page_size");
+      }
+
+      const documents = tools.find((tool) => tool.name === "search_documents");
+      expect(documents?.inputSchema.properties).toHaveProperty("document_folder_id");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+});
+
+describe("MCP Tool Contracts", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
   });
 
-  it("should have 19 tools total", () => {
-    expect(tools.length).toBe(19);
+  async function connectTestClient() {
+    const server = createMcpServer({ apiKey: "test-api-key", region: "us" });
+    const client = new Client({ name: "itglue-mcp-test", version: "1.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+    return { client, server };
+  }
+
+  it.each([
+    ["omitted", {}, "filter%5Bdocument-folder-id%5D%5Bne%5D=null"],
+    ["root", { document_folder_id: 0 }, "filter%5Bdocument-folder-id%5D=0"],
+    ["specific", { document_folder_id: 42 }, "filter%5Bdocument-folder-id%5D=42"],
+  ])("routes %s document folder selection correctly", async (_label, folderArgs, expectedQuery) => {
+    mockFetch.mockResolvedValueOnce(createMockResponse(createJsonApiResponse([])));
+    const { client, server } = await connectTestClient();
+
+    try {
+      await client.callTool({
+        name: "search_documents",
+        arguments: { organization_id: 123, ...folderArgs },
+      });
+      const requestUrl = String(mockFetch.mock.calls.at(-1)?.[0]);
+      expect(requestUrl).toContain(expectedQuery);
+      expect(requestUrl).toContain("page%5Bsize%5D=50");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it.each([
+    ["omitted", {}, "show_password=false"],
+    ["false", { show_password: false }, "show_password=false"],
+    ["true", { show_password: true }, "show_password=true"],
+  ])("handles %s password disclosure explicitly", async (_label, passwordArgs, expectedQuery) => {
+    mockFetch.mockResolvedValueOnce(createMockResponse({ data: { id: "99", type: "passwords", attributes: {} } }));
+    const { client, server } = await connectTestClient();
+
+    try {
+      await client.callTool({
+        name: "get_password",
+        arguments: { id: "99", ...passwordArgs },
+      });
+      expect(String(mockFetch.mock.calls.at(-1)?.[0])).toContain(expectedQuery);
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 });
 

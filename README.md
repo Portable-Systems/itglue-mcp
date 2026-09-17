@@ -2,6 +2,8 @@
 
 A Model Context Protocol (MCP) server that provides Claude with access to IT Glue documentation and asset management.
 
+> **Important:** This repository began as a fork of another project but has since been substantially modified for our own internal workflows and may differ significantly from the original. It is published as-is for reference and reuse, without any guarantee that it will suit other environments. Review the code, security implications, and configuration carefully, and test it thoroughly before use. You use this software at your own risk.
+
 ## One-Click Deployment
 
 [![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/wyre-technology/itglue-mcp/tree/main)
@@ -33,28 +35,32 @@ Alternative: The MCP Gateway can inject credentials via `X_API_KEY` header.
 
 ## Available Tools
 
+Tools named `search_*` retain their public names for compatibility, but IT Glue's index endpoints do not provide useful fuzzy name search. They return up to 50 records per page. Filter the returned records locally by name, and pass `page_number` only when the response metadata contains a `nextPage`. The page size is intentionally server-controlled to avoid oversized tool results.
+
 ### Organizations
 
-- **search_organizations** - Search for organizations with optional filtering by name, type, status, or PSA ID
+- **search_organizations** - List an organization index page, optionally narrowed by type, status, or PSA ID
 - **get_organization** - Get a specific organization by ID
 
 ### Configurations (Devices/Assets)
 
-- **search_configurations** - Search for configurations with filtering by organization, name, type, status, serial number, RMM ID, or PSA ID
+- **search_configurations** - List a configuration index page, optionally narrowed by organization, type, status, serial number, RMM ID, or PSA ID
 - **get_configuration** - Get a specific configuration by ID
 
 ### Passwords
 
-- **search_passwords** - Search for password entries (metadata only, no actual passwords in results)
-- **get_password** - Get a specific password entry including the actual password value
+- **search_passwords** - List a password-entry index page (metadata only, with no actual password values)
+- **get_password** - Get a specific password entry; metadata is returned by default, and `show_password: true` explicitly includes the password value
 
 ### Documents
 
-- **search_documents** - Search for documents with filtering by organization or name
+- **search_documents** - List standard-document previews for an organization. Omitting `document_folder_id` lists documents outside the root folder; use `0` for the root folder or a positive ID for one exact folder
+- **read_document_html** - Read all sections of one standard document as combined HTML
 
 ### Flexible Assets
 
-- **search_flexible_assets** - Search for flexible assets (requires flexible_asset_type_id)
+- **list_flexible_asset_types** - List flexible asset types and discover the ID required by `search_flexible_assets`
+- **search_flexible_assets** - List a flexible-asset index page for one required `flexible_asset_type_id`; flexible assets are separate from standard documents
 
 ### Utility
 

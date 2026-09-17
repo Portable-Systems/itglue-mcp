@@ -16,7 +16,6 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { setServerRef } from "./utils/server-ref.js";
-import { elicitText } from "./utils/elicitation.js";
 import { registerPromptHandlers } from "./prompts.js";
 
 // IT Glue region configuration
@@ -139,7 +138,7 @@ function escapeHtml(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
 
@@ -189,7 +188,9 @@ function extractImageLinks(section: Record<string, unknown>): string[] {
 
 function sectionToHtml(section: Record<string, unknown>): string {
   const attributes = extractDocumentSectionRecord(section) ?? section;
-  const resourceType = normalizeSectionText(attributes?.["resource-type"] || attributes?.resourceType);
+  const resourceType = normalizeSectionText(
+    attributes?.["resource_type"] ?? attributes?.["resource-type"] ?? attributes?.resourceType
+  );
   const content = normalizeSectionText(attributes?.content);
   const sectionContent = content;
 
@@ -232,7 +233,9 @@ function combineDocumentSectionsAsHtml(sections: Array<Record<string, unknown>>)
 
   for (const section of sections) {
     const attributes = extractDocumentSectionRecord(section) ?? section;
-    const resourceType = normalizeSectionText(attributes?.["resource-type"] || attributes?.resourceType);
+    const resourceType = normalizeSectionText(
+      attributes?.["resource_type"] ?? attributes?.["resource-type"] ?? attributes?.resourceType
+    );
 
     if (resourceType === "Document::Step") {
       if (!openStepList) {
@@ -249,6 +252,94 @@ function combineDocumentSectionsAsHtml(sections: Array<Record<string, unknown>>)
 
   closeStepList();
   return parts.join("\n");
+}
+
+const DOCUMENT_SECTION_TYPES: Record<string, string> = {
+  text: "Document::Text",
+  heading: "Document::Heading",
+  gallery: "Document::Gallery",
+  step: "Document::Step",
+};
+
+const SECTION_ATTRIBUTE_NAMES = [
+  "content",
+  "level",
+  "duration",
+  "reset_count",
+  "sort",
+] as const;
+
+type DocumentSectionType = keyof typeof DOCUMENT_SECTION_TYPES;
+
+function getDocumentSectionType(value: unknown): DocumentSectionType | undefined {
+  return typeof value === "string" && value in DOCUMENT_SECTION_TYPES
+    ? value as DocumentSectionType
+    : undefined;
+}
+
+function _getExistingDocumentSectionType(value: unknown): DocumentSectionType | undefined {
+  if (typeof value !== "string") return undefined;
+  const matchingEntry = Object.entries(DOCUMENT_SECTION_TYPES).find(([, resourceType]) => resourceType === value);
+  return matchingEntry?.[0] as DocumentSectionType | undefined ?? getDocumentSectionType(value);
+}
+
+function validateDocumentSectionAttributes(
+  sectionType: DocumentSectionType,
+  attributes: Record<string, unknown>,
+  mode: "create" | "update"
+): void {
+  const supplied = new Set(Object.keys(attributes));
+  const allowed = new Set<string>(["sort"]);
+
+  if (sectionType === "text" || sectionType === "heading" || sectionType === "step") {
+    allowed.add("content");
+  }
+  if (sectionType === "heading") allowed.add("level");
+  if (sectionType === "step") {
+    allowed.add("duration");
+    allowed.add("reset_count");
+  }
+
+  const invalid = [...supplied].filter((name) => !allowed.has(name));
+  if (invalid.length > 0) {
+    throw new Error(`${sectionType} sections do not support: ${invalid.join(", ")}`);
+  }
+
+  if (mode === "create" && (sectionType === "text" || sectionType === "heading" || sectionType === "step") && typeof attributes.content !== "string") {
+    throw new Error(`${sectionType} sections require content`);
+  }
+  if (mode === "create" && sectionType === "heading" && attributes.level === undefined) {
+    throw new Error("heading sections require level");
+  }
+  if (sectionType === "heading" && attributes.level !== undefined &&
+      (!Number.isInteger(attributes.level) || Number(attributes.level) < 1 || Number(attributes.level) > 6)) {
+    throw new Error("Heading level must be an integer from 1 through 6");
+  }
+  if (sectionType === "step" && attributes.duration !== undefined &&
+      (!Number.isFinite(attributes.duration) || Number(attributes.duration) < 0)) {
+    throw new Error("Step duration must be a non-negative number");
+  }
+  if (attributes.sort !== undefined &&
+      (!Number.isFinite(attributes.sort) || !Number.isInteger(attributes.sort))) {
+    throw new Error("Section sort must be an integer");
+  }
+  if (attributes.reset_count !== undefined && typeof attributes.reset_count !== "boolean") {
+    throw new Error("Step reset_count must be a boolean");
+  }
+}
+
+function buildDocumentSectionAttributes(
+  sectionType: DocumentSectionType,
+  input: Record<string, unknown>,
+  mode: "create" | "update"
+): Record<string, unknown> {
+  const attributes: Record<string, unknown> = {};
+  for (const name of SECTION_ATTRIBUTE_NAMES) {
+    if (input[name] !== undefined) attributes[name] = input[name];
+  }
+  validateDocumentSectionAttributes(sectionType, attributes, mode);
+  if (mode === "create") attributes.resource_type = DOCUMENT_SECTION_TYPES[sectionType];
+  return attributes;
 }
 
 // Simple IT Glue client
@@ -270,7 +361,10 @@ export class ITGlueClient {
       if (key === "filter" && typeof value === "object") {
         const filterParams = buildFilterParams(value as Record<string, unknown>);
         for (const [filterKey, filterValue] of Object.entries(filterParams)) {
-          searchParams.append(`filter[${filterKey}]`, filterValue);
+              const queryKey = filterKey.includes("[")
+                ? `filter[${filterKey.replace("[", "][")}`
+                : `filter[${filterKey}]`;
+              searchParams.append(queryKey, filterValue);
         }
       } else if (key === "page" && typeof value === "object") {
         const pageObj = value as { size?: number; number?: number };
@@ -500,7 +594,7 @@ function createClient(credentials: GatewayCredentials): ITGlueClient {
  * Create a fresh MCP Server with all tool handlers registered.
  * Called per-request in HTTP (stateless) mode so each initialize gets a clean server.
  */
-function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
+export function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
   const server = new Server(
     {
       name: "itglue-mcp",
@@ -524,14 +618,10 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       // Organizations
       {
         name: "search_organizations",
-        description: "Search for organizations in IT Glue with optional filtering",
+        description: "List one index page of IT Glue organizations. This is not fuzzy or full-text search: inspect the returned records and filter them locally by name. Use organization type, status, or PSA filters only when known, and request the next page only when pagination metadata shows one.",
         inputSchema: {
           type: "object",
           properties: {
-            /*name: {
-              type: "string",
-              description: `Filter by organization name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             organization_type_id: {
               type: "number",
               description: `Filter by organization type ID.${OPTIONAL_PARAM_NOTE}`,
@@ -544,13 +634,9 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Filter by PSA integration ID.${OPTIONAL_PARAM_NOTE}`,
             },
-            /*page_size: {
-              type: "number",
-              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             page_number: {
               type: "number",
-              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
+              description: `Page number to retrieve. Omit for page 1; increment only when the previous result has a nextPage.${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
@@ -622,7 +708,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       // Configurations
       {
         name: "search_configurations",
-        description: "Search for configurations (devices/assets) in IT Glue",
+        description: "List one index page of IT Glue configurations (devices/assets). Filter returned records locally when looking for a name; IT Glue does not provide useful fuzzy name search. Scope by organization or other known IDs when possible, and request another page only when pagination metadata shows one.",
         inputSchema: {
           type: "object",
           properties: {
@@ -630,10 +716,6 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "number",
               description: `Filter by organization ID.${OPTIONAL_PARAM_NOTE}`,
             },
-            /*name: {
-              type: "string",
-              description: `Filter by configuration name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             configuration_type_id: {
               type: "number",
               description: `Filter by configuration type ID.${OPTIONAL_PARAM_NOTE}`,
@@ -654,13 +736,9 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Filter by PSA integration ID.${OPTIONAL_PARAM_NOTE}`,
             },
-            /*page_size: {
-              type: "number",
-              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             page_number: {
               type: "number",
-              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
+              description: `Page number to retrieve. Omit for page 1; increment only when the previous result has a nextPage.${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
@@ -687,7 +765,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       // Passwords
       {
         name: "search_passwords",
-        description: "Search for password entries in IT Glue (returns metadata only, not actual passwords)",
+        description: "List one index page of IT Glue password-entry metadata; this never returns password values. Filter returned records locally when looking for a name. Scope by organization or other known fields when possible, and use get_password only when the user explicitly needs one entry or its secret value.",
         inputSchema: {
           type: "object",
           properties: {
@@ -695,10 +773,6 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "number",
               description: `Filter by organization ID.${OPTIONAL_PARAM_NOTE}`,
             },
-            /*name: {
-              type: "string",
-              description: `Filter by password entry name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             password_category_id: {
               type: "number",
               description: `Filter by password category ID.${OPTIONAL_PARAM_NOTE}`,
@@ -711,13 +785,9 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Filter by username.${OPTIONAL_PARAM_NOTE}`,
             },
-            /*page_size: {
-              type: "number",
-              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             page_number: {
               type: "number",
-              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
+              description: `Page number to retrieve. Omit for page 1; increment only when the previous result has a nextPage.${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
@@ -729,7 +799,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "get_password",
-        description: "Get a specific password entry by ID from IT Glue (includes the actual password value)",
+        description: "Get one IT Glue password entry by ID. Returns metadata without the password value by default. Set show_password to true only when the user explicitly requests the secret value.",
         inputSchema: {
           type: "object",
           properties: {
@@ -739,7 +809,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             },
             show_password: {
               type: "boolean",
-              description: `Whether to include the actual password value (default true).${OPTIONAL_PARAM_NOTE}`,
+              description: `Set true to include the actual password value. Defaults to false; never enable for metadata lookups or audits.${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["id"],
@@ -748,7 +818,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       // Documents
       {
         name: "search_documents",
-        description: "Search for documents in IT Glue (scoped to an organization). Returns only the first section's content as a short intro/description, not the full document.",
+        description: "List one index page of standard IT Glue documents for an organization. Returns compact records with only a first-section preview; use read_document_html for the complete document. By default this lists documents outside the root folder. Set document_folder_id to 0 for root-folder documents or to a positive folder ID for that exact folder. Filter returned records locally by name.",
         inputSchema: {
           type: "object",
           properties: {
@@ -756,17 +826,9 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "number",
               description: "Organization ID (required — documents are scoped to organizations)",
             },
-            /*name: {
-              type: "string",
-              description: `Filter by document name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
-            },*/
-            /*page_size: {
-              type: "number",
-              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             page_number: {
               type: "number",
-              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
+              description: `Page number to retrieve. Omit for page 1; increment only when the previous result has a nextPage.${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
@@ -774,7 +836,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             },
             document_folder_id: {
               type: "number",
-              description: `Filter by document folder ID to search within a specific folder, excluding subfolders. 0 is the root folder of an organization.${OPTIONAL_PARAM_NOTE}`,
+              description: `Set 0 for the organization's root folder or a positive folder ID for that exact folder, excluding subfolders. Omit to list documents outside the root folder.${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["organization_id"],
@@ -782,7 +844,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "list_locations",
-        description: "List all locations for a particular organization in IT Glue",
+        description: "List one index page of locations for an IT Glue organization. Filter returned records locally when looking for a name, and request another page only when pagination metadata shows one.",
         inputSchema: {
           type: "object",
           properties: {
@@ -790,10 +852,6 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "number",
               description: "Organization ID to list locations for",
             },
-            /*name: {
-              type: "string",
-              description: `Filter by location name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             location_id: {
               type: "number",
               description: `Filter by location ID.${OPTIONAL_PARAM_NOTE}`,
@@ -802,13 +860,9 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Sort field. Must be one of: name, id, primary, created_at, updated_at.${OPTIONAL_PARAM_NOTE}`,
             },
-            /*page_size: {
-              type: "number",
-              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             page_number: {
               type: "number",
-              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
+              description: `Page number to retrieve. Omit for page 1; increment only when the previous result has a nextPage.${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["organization_id"],
@@ -816,7 +870,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "list_contacts",
-        description: "List all contacts for a particular organization in IT Glue",
+        description: "List one index page of contacts for an IT Glue organization. Use the available ID and important filters when known, then filter returned records locally and follow nextPage only when present.",
         inputSchema: {
           type: "object",
           properties: {
@@ -840,13 +894,9 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "string",
               description: `Sort field. Must be one of: first_name, last_name, id, created_at, updated_at.${OPTIONAL_PARAM_NOTE}`,
             },
-            /*page_size: {
-              type: "number",
-              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             page_number: {
               type: "number",
-              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
+              description: `Page number to retrieve. Omit for page 1; increment only when the previous result has a nextPage.${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["organization_id"],
@@ -941,7 +991,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "create_document_section",
-        description: "Add a new section to an IT Glue document. Section types: 'heading' (Document::Heading) or 'text' (Document::Text). Call publish_document after editing.",
+        description: "Create exactly one document section, then call publish_document. Choose section_type and provide only matching fields: text requires content; heading requires content plus integer level 1-6; step requires content and optionally accepts duration in minutes and reset_count; gallery accepts none of content, level, duration, or reset_count. sort is optional for every type and controls position. Do not provide resource_type or rendered_content; the server generates resource_type.",
         inputSchema: {
           type: "object",
           properties: {
@@ -951,20 +1001,36 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
             },
             section_type: {
               type: "string",
-              enum: ["heading", "text"],
-              description: "Section type: 'heading' for Document::Heading, 'text' for Document::Text",
+              enum: ["heading", "text", "gallery", "step"],
+              description: "Section type: heading, text, gallery, or step",
             },
             content: {
               type: "string",
-              description: "HTML content for the section",
+              description: "HTML content; required for text, heading, and step sections",
+            },
+            level: {
+              type: "number",
+              description: "Heading level from 1 through 6; required for heading sections",
+            },
+            duration: {
+              type: "number",
+              description: "Step duration in minutes",
+            },
+            reset_count: {
+              type: "boolean",
+              description: "Whether the step count should reset",
+            },
+            sort: {
+              type: "number",
+              description: "Section sort order",
             },
           },
-          required: ["document_id", "section_type", "content"],
+          required: ["document_id", "section_type"],
         },
       },
       {
         name: "update_document_section",
-        description: "Update the content of an existing IT Glue document section. Use list_document_sections to get section IDs. Call publish_document after editing.",
+        description: "Partially update one existing document section, then call publish_document. Always provide its current section_type; it validates fields and never changes the resource type. text may update content or sort; heading may update content, level, or sort; step may update content, duration, reset_count, or sort; gallery may update sort only. Provide at least one change. sort moves the section. Do not provide resource_type or rendered_content.",
         inputSchema: {
           type: "object",
           properties: {
@@ -976,12 +1042,33 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "number",
               description: "The section ID (from list_document_sections)",
             },
+            section_type: {
+              type: "string",
+              enum: ["heading", "text", "gallery", "step"],
+              description: "Existing section type; never changes the resource type",
+            },
             content: {
               type: "string",
-              description: "New HTML content for the section",
+              description: "New HTML content for text, heading, or step sections",
+            },
+            level: {
+              type: "number",
+              description: "New heading level from 1 through 6",
+            },
+            duration: {
+              type: "number",
+              description: "New step duration in minutes",
+            },
+            reset_count: {
+              type: "boolean",
+              description: "Whether the step count should reset",
+            },
+            sort: {
+              type: "number",
+              description: "New section sort order; use this to move the section",
             },
           },
-          required: ["document_id", "section_id", "content"],
+          required: ["document_id", "section_id", "section_type"],
         },
       },
       {
@@ -1061,7 +1148,7 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
       },
       {
         name: "search_flexible_assets",
-        description: "Search for flexible assets in IT Glue (requires flexible_asset_type_id filter)",
+        description: "List one index page of IT Glue flexible assets for one required flexible asset type. Call list_flexible_asset_types first to discover the type ID, then filter returned records locally by name. Flexible assets are separate from standard documents.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1073,17 +1160,9 @@ function createMcpServer(credentialOverrides?: GatewayCredentials): Server {
               type: "number",
               description: `Filter by organization ID.${OPTIONAL_PARAM_NOTE}`,
             },
-            /*name: {
-              type: "string",
-              description: `Filter by flexible asset name (exact match only, case sensitive).${OPTIONAL_PARAM_NOTE}`,
-            },*/
-            /*page_size: {
-              type: "number",
-              description: `Number of results per page (max 1000, default 50).${OPTIONAL_PARAM_NOTE}`,
-            },*/
             page_number: {
               type: "number",
-              description: `Page number to retrieve (default 1).${OPTIONAL_PARAM_NOTE}`,
+              description: `Page number to retrieve. Omit for page 1; increment only when the previous result has a nextPage.${OPTIONAL_PARAM_NOTE}`,
             },
             sort: {
               type: "string",
@@ -1146,21 +1225,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "search_organizations": {
         const params: Record<string, unknown> = {};
         const filter: Record<string, unknown> = {};
-
-        // If no search term provided, elicit one from the user
-        let orgName = args?.name as string | undefined;
-        if (!orgName && !args?.organization_type_id && !args?.organization_status_id && !args?.psa_id) {
-          const elicited = await elicitText(
-            "Which organization are you looking for?",
-            "name",
-            "Enter an organization name to search for, or leave blank to list all"
-          );
-          if (elicited) {
-            orgName = elicited;
-          }
-        }
-
-        if (orgName) filter.name = orgName;
         if (args?.organization_type_id) filter.organizationTypeId = args.organization_type_id;
         if (args?.organization_status_id) filter.organizationStatusId = args.organization_status_id;
         if (args?.psa_id) filter.psaId = args.psa_id;
@@ -1168,7 +1232,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (Object.keys(filter).length > 0) params.filter = filter;
         if (args?.sort) params.sort = args.sort;
         params.page = {
-          size: (args?.page_size as number) || 50,
+          size: 50,
           number: (args?.page_number as number) || 1,
         };
 
@@ -1286,41 +1350,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "search_configurations": {
         const params: Record<string, unknown> = {};
         const filter: Record<string, unknown> = {};
-
-        let configOrgId = args?.organization_id as number | undefined;
-
-        // If no organization_id, elicit an organization name search to find it
-        if (!configOrgId) {
-          const orgSearch = await elicitText(
-            "Configurations are easier to find when scoped to an organization. Which organization?",
-            "organization",
-            "Enter an organization name to search for"
-          );
-          if (orgSearch) {
-            // Search for the organization to get its ID
-            const orgResult = await client.request("/organizations", {
-              filter: { name: orgSearch },
-              page: { size: 5, number: 1 },
-            });
-            const orgs = orgResult.data as Array<Record<string, unknown>>;
-            if (orgs.length === 1) {
-              configOrgId = Number(orgs[0].id);
-            } else if (orgs.length > 1) {
-              // Return the org list so the LLM can ask the user to pick
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name })))}`,
-                  },
-                ],
-              };
-            }
-          }
-        }
-
-        if (configOrgId) filter.organizationId = configOrgId;
-        if (args?.name) filter.name = args.name;
+        if (args?.organization_id) filter.organizationId = args.organization_id;
         if (args?.configuration_type_id) filter.configurationTypeId = args.configuration_type_id;
         if (args?.configuration_status_id) filter.configurationStatusId = args.configuration_status_id;
         if (args?.serial_number) filter.serialNumber = args.serial_number;
@@ -1330,7 +1360,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (Object.keys(filter).length > 0) params.filter = filter;
         if (args?.sort) params.sort = args.sort;
         params.page = {
-          size: (args?.page_size as number) || 50,
+          size: 50,
           number: (args?.page_number as number) || 1,
         };
 
@@ -1369,41 +1399,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "search_passwords": {
         const params: Record<string, unknown> = {};
         const filter: Record<string, unknown> = {};
-
-        let pwOrgId = args?.organization_id as number | undefined;
-
-        // If no organization_id, elicit an organization name search to find it
-        if (!pwOrgId) {
-          const orgSearch = await elicitText(
-            "Passwords are easier to find when scoped to an organization. Which organization?",
-            "organization",
-            "Enter an organization name to search for"
-          );
-          if (orgSearch) {
-            // Search for the organization to get its ID
-            const orgResult = await client.request("/organizations", {
-              filter: { name: orgSearch },
-              page: { size: 5, number: 1 },
-            });
-            const orgs = orgResult.data as Array<Record<string, unknown>>;
-            if (orgs.length === 1) {
-              pwOrgId = Number(orgs[0].id);
-            } else if (orgs.length > 1) {
-              // Return the org list so the LLM can ask the user to pick
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: `Multiple organizations match "${orgSearch}". Please re-run with a specific organization_id:\n\n${JSON.stringify(orgs.map((o) => ({ id: o.id, name: o.name })))}`,
-                  },
-                ],
-              };
-            }
-          }
-        }
-
-        if (pwOrgId) filter.organizationId = pwOrgId;
-        if (args?.name) filter.name = args.name;
+        if (args?.organization_id) filter.organizationId = args.organization_id;
         if (args?.password_category_id) filter.passwordCategoryId = args.password_category_id;
         if (args?.url) filter.url = args.url;
         if (args?.username) filter.username = args.username;
@@ -1411,7 +1407,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (Object.keys(filter).length > 0) params.filter = filter;
         if (args?.sort) params.sort = args.sort;
         params.page = {
-          size: (args?.page_size as number) || 50,
+          size: 50,
           number: (args?.page_number as number) || 1,
         };
         // Don't show passwords in search results for security
@@ -1435,7 +1431,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
-        const showPassword = args?.show_password !== false;
+        const showPassword = args?.show_password === true;
         const password = await client.get(`/passwords/${args.id}`, {
           include: "related_items",
           show_password: showPassword,
@@ -1462,8 +1458,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const params: Record<string, unknown> = {};
         const filter: Record<string, unknown> = {};
 
-        if (args?.name) filter.name = args.name;
-        if (args?.document_folder_id) {
+        if (args?.document_folder_id !== undefined) {
           filter.documentFolderId = args.document_folder_id;
         } else {
           filter.documentFolderId = { ne: null };
@@ -1472,7 +1467,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (Object.keys(filter).length > 0) params.filter = filter;
         if (args?.sort) params.sort = args.sort;
         params.page = {
-          size: (args?.page_size as number) || 50,
+          size: 50,
           number: (args?.page_number as number) || 1,
         };
 
@@ -1528,12 +1523,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const filter: Record<string, unknown> = {};
 
         if (args?.location_id) filter.id = args.location_id;
-        if (args?.name) filter.name = args.name;
-
         if (Object.keys(filter).length > 0) params.filter = filter;
         if (args?.sort) params.sort = args.sort;
         params.page = {
-          size: (args?.page_size as number) || 50,
+          size: 50,
           number: (args?.page_number as number) || 1,
         };
 
@@ -1569,7 +1562,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (Object.keys(filter).length > 0) params.filter = filter;
         if (args?.sort) params.sort = args.sort;
         params.page = {
-          size: (args?.page_size as number) || 50,
+          size: 50,
           number: (args?.page_number as number) || 1,
         };
 
@@ -1676,37 +1669,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "create_document_section": {
-        if (!args?.document_id || !args?.section_type || !args?.content) {
+        if (!args?.document_id || !args?.section_type) {
           return {
-            content: [{ type: "text", text: "Error: document_id, section_type, and content are required" }],
+            content: [{ type: "text", text: "Error: document_id and section_type are required" }],
             isError: true,
           };
         }
-        // IT Glue's API stores the section-type value in the `resource_type`
-        // attribute (values `Document::Text` / `Document::Heading`). The
-        // `section-type` field is accepted but ignored, and passing a
-        // `relationships.resource` binding triggers a 400 for missing
-        // `resource_type`. Verified live 2026-04-23.
-        const sectionTypeMap: Record<string, string> = {
-          heading: "Document::Heading",
-          text: "Document::Text",
-        };
-        const apiSectionType = sectionTypeMap[args.section_type as string];
-        if (!apiSectionType) {
-          return {
-            content: [{ type: "text", text: "Error: section_type must be 'heading' or 'text'" }],
-            isError: true,
-          };
-        }
+        const sectionType = getDocumentSectionType(args.section_type);
+        if (!sectionType) throw new Error("section_type must be 'heading', 'text', 'gallery', or 'step'");
+        const attributes = buildDocumentSectionAttributes(sectionType, args, "create");
         const newSection = await client.post(
           `/documents/${args.document_id}/relationships/sections`,
           {
             data: {
               type: "document-sections",
-              attributes: {
-                resource_type: apiSectionType,
-                content: args.content,
-              },
+              attributes,
             },
           }
         );
@@ -1716,20 +1693,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "update_document_section": {
-        if (!args?.document_id || !args?.section_id || !args?.content) {
+        if (!args?.document_id || !args?.section_id || !args?.section_type) {
           return {
-            content: [{ type: "text", text: "Error: document_id, section_id, and content are required" }],
+            content: [{ type: "text", text: "Error: document_id, section_id, and section_type are required" }],
             isError: true,
           };
+        }
+        const sectionType = getDocumentSectionType(args.section_type);
+        if (!sectionType) throw new Error("section_type must be 'heading', 'text', 'gallery', or 'step'");
+        const attributes = buildDocumentSectionAttributes(sectionType, args, "update");
+        if (Object.keys(attributes).length === 0) {
+          throw new Error("At least one section attribute is required for update");
         }
         const updatedSection = await client.patch(
           `/documents/${args.document_id}/relationships/sections/${args.section_id}`,
           {
             data: {
               type: "document-sections",
-              attributes: {
-                content: args.content,
-              },
+              attributes,
             },
           }
         );
@@ -1822,12 +1803,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
 
         if (args?.organization_id) filter.organizationId = args.organization_id;
-        if (args?.name) filter.name = args.name;
-
         params.filter = filter;
         if (args?.sort) params.sort = args.sort;
         params.page = {
-          size: (args?.page_size as number) || 50,
+          size: 50,
           number: (args?.page_number as number) || 1,
         };
 
