@@ -241,6 +241,20 @@ function sectionToHtml(section: Record<string, unknown>): string {
   return sectionContent || content;
 }
 
+function compactHtmlWhitespace(html: string): string {
+  return html
+    .split(/(<pre\b[^>]*>[\s\S]*?<\/pre>)/gi)
+    .map((fragment, index) => index % 2 === 1
+      ? fragment
+      : fragment
+        .replace(/^[ \t]*[\r\n]+[ \t]*/g, "")
+        .replace(/[ \t]*[\r\n]+[ \t]*$/g, "")
+        .replace(/>\s*[\r\n]+\s*</g, "><")
+        .replace(/[ \t]*[\r\n]+[ \t]*/g, " "))
+    .join("")
+    .trim();
+}
+
 function combineDocumentSectionsAsHtml(sections: Array<Record<string, unknown>>): string {
   const parts: string[] = [];
   let openStepList = false;
@@ -269,7 +283,7 @@ function combineDocumentSectionsAsHtml(sections: Array<Record<string, unknown>>)
   }
 
   closeStepList();
-  return parts.join("\n");
+  return compactHtmlWhitespace(parts.join(""));
 }
 
 type DocumentContentStyle = "original" | "html" | "md" | "none";

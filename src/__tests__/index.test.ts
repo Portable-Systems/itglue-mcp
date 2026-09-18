@@ -415,7 +415,7 @@ describe("MCP Tool Contracts", () => {
       { type: "document-sections", attributes: { "resource-type": "Document::Heading", sort: 2, level: 4, content: "Guiding principles" } },
       { type: "document-sections", attributes: { "resource-type": "Document::Text", sort: 3, content: "<p>Published <strong>body</strong></p>" } },
     ]],
-    ["html", "<h2>Policy details</h2>\n<h4>Guiding principles</h4>\n<p>Published <strong>body</strong></p>"],
+    ["html", "<h2>Policy details</h2><h4>Guiding principles</h4><p>Published <strong>body</strong></p>"],
     ["md", "## Policy details\n\n#### Guiding principles\n\nPublished **body**"],
     ["none", undefined],
   ])("returns published document content as %s", async (contentStyle, expectedContent) => {
@@ -454,6 +454,41 @@ describe("MCP Tool Contracts", () => {
       expect(response.data.name).toBe("Published document");
       expect(response.data.content).toEqual(expectedContent);
       expect(response.data).not.toHaveProperty("sections");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("removes HTML newlines outside pre blocks only", async () => {
+    mockFetch.mockResolvedValueOnce(createMockResponse({
+      data: {
+        id: "789",
+        type: "documents",
+        attributes: {
+          sections: [{
+            type: "document-sections",
+            attributes: {
+              "resource-type": "Document::Text",
+              content: "<p>Before</p>\n<p>After</p><pre>line one\n  line two</pre>\n<div>Done</div>",
+            },
+          }],
+        },
+      },
+    }));
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "get_document",
+        arguments: { id: "789", content_style: "html" },
+      });
+      const responseText = result.content[0]?.type === "text" ? result.content[0].text : "";
+      const response = JSON.parse(responseText) as { data: { content: string } };
+
+      expect(response.data.content).toBe(
+        "<p>Before</p><p>After</p><pre>line one\n  line two</pre><div>Done</div>"
+      );
     } finally {
       await client.close();
       await server.close();
