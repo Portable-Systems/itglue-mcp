@@ -168,6 +168,20 @@ function extractDocumentSectionRecord(value: unknown): Record<string, unknown> |
   };
 }
 
+function getDocumentSectionResourceType(section: Record<string, unknown>): string {
+  const attributes = extractDocumentSectionRecord(section) ?? section;
+  const explicitType = attributes.resource_type
+    ?? attributes["resource-type"]
+    ?? attributes.resourceType
+    ?? attributes.section_type
+    ?? attributes["section-type"]
+    ?? attributes.sectionType;
+  if (typeof explicitType === "string") return explicitType;
+  return typeof attributes.type === "string" && attributes.type.startsWith("Document::")
+    ? attributes.type
+    : "";
+}
+
 function extractImageLinks(section: Record<string, unknown>): string[] {
   const imageLinks: string[] = [];
   const imageCollections = [section["document-images"], section.documentImages];
@@ -189,16 +203,15 @@ function extractImageLinks(section: Record<string, unknown>): string[] {
 
 function sectionToHtml(section: Record<string, unknown>): string {
   const attributes = extractDocumentSectionRecord(section) ?? section;
-  const resourceType = normalizeSectionText(
-    attributes?.["resource_type"] ?? attributes?.["resource-type"] ?? attributes?.resourceType
-  );
+  const resourceType = getDocumentSectionResourceType(section);
   const content = normalizeSectionText(attributes?.content);
   const sectionContent = content;
 
   if (resourceType === "Document::Heading") {
     const levelValue = Number(attributes?.level);
-    const level = Number.isFinite(levelValue) && levelValue >= 1 && levelValue <= 6 ? levelValue : 2;
-    return `<h${level}>${sectionContent || escapeHtml(normalizeSectionText(attributes?.name))}</h${level}>`;
+    const level = Number.isInteger(levelValue) && levelValue >= 1 && levelValue <= 6 ? levelValue : 2;
+    const headingText = sectionContent || normalizeSectionText(attributes?.name);
+    return `<h${level}>${escapeHtml(headingText)}</h${level}>`;
   }
 
   if (resourceType === "Document::Gallery") {
@@ -233,10 +246,7 @@ function combineDocumentSectionsAsHtml(sections: Array<Record<string, unknown>>)
   };
 
   for (const section of sections) {
-    const attributes = extractDocumentSectionRecord(section) ?? section;
-    const resourceType = normalizeSectionText(
-      attributes?.["resource_type"] ?? attributes?.["resource-type"] ?? attributes?.resourceType
-    );
+    const resourceType = getDocumentSectionResourceType(section);
 
     if (resourceType === "Document::Step") {
       if (!openStepList) {
@@ -267,15 +277,21 @@ function formatPublishedDocument(
   document: Record<string, unknown>,
   contentStyle: DocumentContentStyle
 ): Record<string, unknown> {
-  if (contentStyle === "original") return document;
+  const {
+    content: originalContent,
+    sections: originalSections,
+    ...metadata
+  } = document;
+  const publishedSections = Array.isArray(originalContent)
+    ? originalContent
+    : Array.isArray(originalSections)
+      ? originalSections
+      : [];
 
-  const { content: originalContent, ...metadata } = document;
+  if (contentStyle === "original") return { ...metadata, content: publishedSections };
   if (contentStyle === "none") return metadata;
 
-  const sections = Array.isArray(originalContent)
-    ? originalContent as Array<Record<string, unknown>>
-    : [];
-  const html = combineDocumentSectionsAsHtml(sections);
+  const html = combineDocumentSectionsAsHtml(publishedSections as Array<Record<string, unknown>>);
   if (contentStyle === "html") return { ...metadata, content: html };
 
   const turndown = new TurndownService({

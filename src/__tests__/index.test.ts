@@ -411,22 +411,26 @@ describe("MCP Tool Contracts", () => {
 
   it.each([
     ["original", [
-      { resource: { resource_type: "Document::Heading", level: 1, content: "Published title" } },
+      { resource: { sectionType: "Document::Heading", level: 2, content: "Published <title> & notes" } },
       { resource: { resource_type: "Document::Text", content: "<p>Published <strong>body</strong></p>" } },
     ]],
-    ["html", "<h1>Published title</h1>\n<p>Published <strong>body</strong></p>"],
-    ["md", "# Published title\n\nPublished **body**"],
+    ["html", "<h2>Published &lt;title&gt; &amp; notes</h2>\n<p>Published <strong>body</strong></p>"],
+    ["md", "## Published <title> & notes\n\nPublished **body**"],
     ["none", undefined],
   ])("returns published document content as %s", async (contentStyle, expectedContent) => {
     const originalContent = [
-      { resource: { resource_type: "Document::Heading", level: 1, content: "Published title" } },
+      { resource: { sectionType: "Document::Heading", level: 2, content: "Published <title> & notes" } },
       { resource: { resource_type: "Document::Text", content: "<p>Published <strong>body</strong></p>" } },
     ];
     mockFetch.mockResolvedValueOnce(createMockResponse({
       data: {
         id: "789",
         type: "documents",
-        attributes: { name: "Published document", content: originalContent },
+        attributes: {
+          name: "Published document",
+          content: originalContent,
+          sections: [{ resource: { sectionType: "Document::Heading", content: "Duplicate title" } }],
+        },
       },
     }));
     const { client, server } = await connectTestClient();
@@ -443,6 +447,7 @@ describe("MCP Tool Contracts", () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(response.data.name).toBe("Published document");
       expect(response.data.content).toEqual(expectedContent);
+      expect(response.data).not.toHaveProperty("sections");
     } finally {
       await client.close();
       await server.close();
