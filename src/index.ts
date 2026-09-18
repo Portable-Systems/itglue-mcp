@@ -1034,7 +1034,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       // Document Sections
       {
         name: "list_document_sections",
-        description: "List the current draft of an IT Glue document as ordered full JSON section records, including section IDs, types, and attributes. This may include unpublished edits and can differ from get_document, which returns the published version. Use this before creating, updating, deleting, or reordering sections, and when draft structure or section IDs are required.",
+        description: "List the current draft of an IT Glue document as ordered full JSON section records, including section IDs, types, attributes, HTML content, and image URLs. This may include unpublished edits and can differ from get_document, which returns the published version. Always call this immediately before creating, updating, deleting, or reordering sections: its ordered result is the authoritative original draft layout for the edit. When retaining an image or image-containing HTML, preserve its automatically replaced URL and the surrounding HTML shape exactly.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1048,7 +1048,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       },
       {
         name: "create_document_section",
-        description: "Create exactly one section in the document draft. The change remains unpublished until publish_document is called. Choose section_type and provide only matching fields: text requires content; heading requires content plus integer level 1-6; step requires content and optionally accepts duration in minutes and reset_count; gallery accepts none of content, level, duration, or reset_count. sort is optional for every type and controls position. Do not provide resource_type or rendered_content; the server generates resource_type. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
+        description: "Create one or more sections in the document draft. First call list_document_sections and use its ordered result as the authoritative original draft layout; use sort only to place new sections relative to that layout. The changes remain unpublished until publish_document is called. For one section, provide section_type and its matching fields. To create multiple sections in one call, provide sections: an ordered array where every item has section_type and its matching fields; all items are validated before creation begins. IT Glue processes sections individually, so a later failure can leave earlier creations applied. Always provide content as HTML whenever the section type supports it: text, heading, and step must have non-empty HTML content; gallery cannot accept content. When retaining a draft image or image-containing HTML, preserve its automatically replaced URL and surrounding HTML shape exactly. heading requires integer level 1-6; step optionally accepts duration in minutes and reset_count. sort is optional for every type and controls position. Do not provide resource_type or rendered_content; the server generates resource_type. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1081,13 +1081,49 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
               type: "number",
               description: "Section sort order",
             },
+            sections: {
+              type: "array",
+              minItems: 1,
+              description: "Ordered batch of sections to create. Use instead of top-level section_type and section fields.",
+              items: {
+                type: "object",
+                properties: {
+                  section_type: {
+                    type: "string",
+                    enum: ["heading", "text", "gallery", "step"],
+                    description: "Section type: heading, text, gallery, or step",
+                  },
+                  content: {
+                    type: "string",
+                    description: "HTML content; required for text, heading, and step sections",
+                  },
+                  level: {
+                    type: "number",
+                    description: "Heading level from 1 through 6; required for heading sections",
+                  },
+                  duration: {
+                    type: "number",
+                    description: "Step duration in minutes",
+                  },
+                  reset_count: {
+                    type: "boolean",
+                    description: "Whether the step count should reset",
+                  },
+                  sort: {
+                    type: "number",
+                    description: "Section sort order",
+                  },
+                },
+                required: ["section_type"],
+              },
+            },
           },
-          required: ["document_id", "section_type"],
+          required: ["document_id"],
         },
       },
       {
         name: "update_document_section",
-        description: "Partially update one section in the document draft. The change remains unpublished until publish_document is called. Always provide its current section_type; it validates fields and never changes the resource type. text may update content or sort; heading may update content, level, or sort; step may update content, duration, reset_count, or sort; gallery may update sort only. Provide at least one change. sort moves the section. Do not provide resource_type or rendered_content. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
+        description: "Partially update one or more sections in the document draft. First call list_document_sections and use its ordered result, IDs, types, HTML, and image URLs as the authoritative original draft layout. The changes remain unpublished until publish_document is called. For one section, provide section_id, section_type, and one or more changes. To change multiple sections in one call, provide updates: an ordered array where every item has section_id, section_type, and one or more changes; all items are validated before updates begin. IT Glue processes sections individually, so a later failure can leave earlier updates applied. Send all updated text, heading, and step content as HTML, never Markdown or plain text. When retaining an image or image-containing HTML, preserve its automatically replaced URL and surrounding HTML shape exactly. section_type validates fields and never changes the resource type. text may update content or sort; heading may update content, level, or sort; step may update content, duration, reset_count, or sort; gallery may update sort only. sort moves a section relative to the draft layout. Do not provide resource_type or rendered_content. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1124,13 +1160,53 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
               type: "number",
               description: "New section sort order; use this to move the section",
             },
+            updates: {
+              type: "array",
+              minItems: 1,
+              description: "Ordered batch of section updates. Use instead of the top-level section_id, section_type, and change fields.",
+              items: {
+                type: "object",
+                properties: {
+                  section_id: {
+                    type: "number",
+                    description: "The section ID (from list_document_sections)",
+                  },
+                  section_type: {
+                    type: "string",
+                    enum: ["heading", "text", "gallery", "step"],
+                    description: "Existing section type; never changes the resource type",
+                  },
+                  content: {
+                    type: "string",
+                    description: "New HTML content for text, heading, or step sections",
+                  },
+                  level: {
+                    type: "number",
+                    description: "New heading level from 1 through 6",
+                  },
+                  duration: {
+                    type: "number",
+                    description: "New step duration in minutes",
+                  },
+                  reset_count: {
+                    type: "boolean",
+                    description: "Whether the step count should reset",
+                  },
+                  sort: {
+                    type: "number",
+                    description: "New section sort order; use this to move the section",
+                  },
+                },
+                required: ["section_id", "section_type"],
+              },
+            },
           },
-          required: ["document_id", "section_id", "section_type"],
+          required: ["document_id"],
         },
       },
       {
         name: "delete_document_section",
-        description: "Delete a section from the document draft. The deletion remains unpublished until publish_document is called. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
+        description: "Delete one or more sections from the document draft. First call list_document_sections and use its ordered result and section IDs as the authoritative original draft layout; delete only the IDs selected from that draft. The deletions remain unpublished until publish_document is called. For one section, provide section_id. To delete multiple sections in one call, provide section_ids: an ordered non-empty array of section IDs. IT Glue processes sections individually, so a later failure can leave earlier deletions applied. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1142,8 +1218,16 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
               type: "number",
               description: "The section ID to delete (from list_document_sections)",
             },
+            section_ids: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "number",
+              },
+              description: "Ordered section IDs to delete. Use instead of section_id.",
+            },
           },
-          required: ["document_id", "section_id"],
+          required: ["document_id"],
         },
       },
       {
@@ -1713,68 +1797,133 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "create_document_section": {
-        if (!args?.document_id || !args?.section_type) {
+        if (!args?.document_id) {
           return {
-            content: [{ type: "text", text: "Error: document_id and section_type are required" }],
+            content: [{ type: "text", text: "Error: document_id is required" }],
             isError: true,
           };
         }
-        const sectionType = getDocumentSectionType(args.section_type);
-        if (!sectionType) throw new Error("section_type must be 'heading', 'text', 'gallery', or 'step'");
-        const attributes = buildDocumentSectionAttributes(sectionType, args, "create");
-        const newSection = await client.post(
-          `/documents/${args.document_id}/relationships/sections`,
-          {
-            data: {
-              type: "document-sections",
-              attributes,
-            },
+        const sectionsInput = args.sections;
+        const sections = sectionsInput === undefined
+          ? [args]
+          : Array.isArray(sectionsInput) ? sectionsInput : undefined;
+        if (!sections || sections.length === 0) {
+          throw new Error("Provide one section or a non-empty sections array");
+        }
+
+        const attributesToCreate = sections.map((section, index) => {
+          if (!section || typeof section !== "object" || Array.isArray(section)) {
+            throw new Error(`sections[${index}] must be an object`);
           }
-        );
+          const sectionInput = section as Record<string, unknown>;
+          const sectionType = getDocumentSectionType(sectionInput.section_type);
+          if (!sectionType) throw new Error(`sections[${index}].section_type must be 'heading', 'text', 'gallery', or 'step'`);
+          return buildDocumentSectionAttributes(sectionType, sectionInput, "create");
+        });
+
+        const createdSections = [];
+        for (const attributes of attributesToCreate) {
+          createdSections.push(await client.post(
+            `/documents/${args.document_id}/relationships/sections`,
+            {
+              data: {
+                type: "document-sections",
+                attributes,
+              },
+            }
+          ));
+        }
         return {
-          content: [{ type: "text", text: JSON.stringify(newSection, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(
+            sectionsInput === undefined ? createdSections[0] : createdSections,
+            null,
+            2
+          ) }],
         };
       }
 
       case "update_document_section": {
-        if (!args?.document_id || !args?.section_id || !args?.section_type) {
+        if (!args?.document_id) {
           return {
-            content: [{ type: "text", text: "Error: document_id, section_id, and section_type are required" }],
+            content: [{ type: "text", text: "Error: document_id is required" }],
             isError: true,
           };
         }
-        const sectionType = getDocumentSectionType(args.section_type);
-        if (!sectionType) throw new Error("section_type must be 'heading', 'text', 'gallery', or 'step'");
-        const attributes = buildDocumentSectionAttributes(sectionType, args, "update");
-        if (Object.keys(attributes).length === 0) {
-          throw new Error("At least one section attribute is required for update");
+        const updatesInput = args.updates;
+        const updates = updatesInput === undefined
+          ? [args]
+          : Array.isArray(updatesInput) ? updatesInput : undefined;
+        if (!updates || updates.length === 0) {
+          throw new Error("Provide one section update or a non-empty updates array");
         }
-        const updatedSection = await client.patch(
-          `/documents/${args.document_id}/relationships/sections/${args.section_id}`,
-          {
-            data: {
-              type: "document-sections",
-              attributes,
-            },
+
+        const validatedUpdates = updates.map((update, index) => {
+          if (!update || typeof update !== "object" || Array.isArray(update)) {
+            throw new Error(`updates[${index}] must be an object`);
           }
-        );
+          const sectionUpdate = update as Record<string, unknown>;
+          if (!Number.isInteger(sectionUpdate.section_id) || Number(sectionUpdate.section_id) <= 0) {
+            throw new Error(`updates[${index}].section_id must be a positive integer`);
+          }
+          if (!sectionUpdate.section_type) {
+            throw new Error(`updates[${index}] requires section_type`);
+          }
+          const sectionType = getDocumentSectionType(sectionUpdate.section_type);
+          if (!sectionType) throw new Error(`updates[${index}].section_type must be 'heading', 'text', 'gallery', or 'step'`);
+          const attributes = buildDocumentSectionAttributes(sectionType, sectionUpdate, "update");
+          if (Object.keys(attributes).length === 0) {
+            throw new Error(`updates[${index}] requires at least one section attribute`);
+          }
+          return { sectionId: sectionUpdate.section_id, attributes };
+        });
+
+        const updatedSections = [];
+        for (const update of validatedUpdates) {
+          updatedSections.push(await client.patch(
+            `/documents/${args.document_id}/relationships/sections/${update.sectionId}`,
+            {
+              data: {
+                type: "document-sections",
+                attributes: update.attributes,
+              },
+            }
+          ));
+        }
         return {
-          content: [{ type: "text", text: JSON.stringify(updatedSection, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(
+            updatesInput === undefined ? updatedSections[0] : updatedSections,
+            null,
+            2
+          ) }],
         };
       }
 
       case "delete_document_section": {
-        if (!args?.document_id || !args?.section_id) {
+        if (!args?.document_id) {
           return {
-            content: [{ type: "text", text: "Error: document_id and section_id are required" }],
+            content: [{ type: "text", text: "Error: document_id is required" }],
             isError: true,
           };
         }
-        await client.delete(
-          `/documents/${args.document_id}/relationships/sections/${args.section_id}`
-        );
+        const sectionIdsInput = args.section_ids;
+        const sectionIds = sectionIdsInput === undefined
+          ? [args.section_id]
+          : Array.isArray(sectionIdsInput) ? sectionIdsInput : undefined;
+        if (!sectionIds || sectionIds.length === 0) {
+          throw new Error("Provide one section_id or a non-empty section_ids array");
+        }
+        if (sectionIds.some((sectionId) => !Number.isInteger(sectionId) || Number(sectionId) <= 0)) {
+          throw new Error("section_id and every section_ids entry must be positive integers");
+        }
+        for (const sectionId of sectionIds) {
+          await client.delete(
+            `/documents/${args.document_id}/relationships/sections/${sectionId}`
+          );
+        }
         return {
-          content: [{ type: "text", text: `Section ${args.section_id} deleted successfully` }],
+          content: [{ type: "text", text: sectionIdsInput === undefined
+            ? `Section ${args.section_id} deleted successfully`
+            : JSON.stringify(sectionIds.map((sectionId) => ({ section_id: sectionId, deleted: true })), null, 2) }],
         };
       }
 

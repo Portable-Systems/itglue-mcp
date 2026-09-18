@@ -335,6 +335,14 @@ describe("Tool Definitions", () => {
       const listDocumentSections = tools.find((tool) => tool.name === "list_document_sections");
       expect(listDocumentSections?.description).toContain("current draft");
       expect(listDocumentSections?.description).toContain("can differ from get_document");
+      expect(listDocumentSections?.description).toContain("authoritative original draft layout");
+
+      const createDocumentSection = tools.find((tool) => tool.name === "create_document_section");
+      expect(createDocumentSection?.description).toContain("non-empty HTML content");
+
+      const updateDocumentSection = tools.find((tool) => tool.name === "update_document_section");
+      expect(updateDocumentSection?.description).toContain("never Markdown or plain text");
+      expect(updateDocumentSection?.description).toContain("automatically replaced URL");
 
       expect(tools.find((tool) => tool.name === "read_document_html")).toBeUndefined();
 
@@ -403,6 +411,126 @@ describe("MCP Tool Contracts", () => {
         arguments: { id: "99", ...passwordArgs },
       });
       expect(String(mockFetch.mock.calls.at(-1)?.[0])).toContain(expectedQuery);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("applies document section updates in the supplied order", async () => {
+    mockFetch
+      .mockResolvedValueOnce(createMockResponse({
+        data: { id: "1002", type: "document-sections", attributes: { content: "<p>Updated.</p>" } },
+      }))
+      .mockResolvedValueOnce(createMockResponse({
+        data: { id: "1003", type: "document-sections", attributes: { sort: 2 } },
+      }));
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "update_document_section",
+        arguments: {
+          document_id: 789,
+          updates: [
+            { section_id: 1002, section_type: "text", content: "<p>Updated.</p>" },
+            { section_id: 1003, section_type: "heading", sort: 2 },
+          ],
+        },
+      });
+
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        "https://api.itglue.com/documents/789/relationships/sections/1002",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ data: { type: "document-sections", attributes: { content: "<p>Updated.</p>" } } }),
+        })
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        "https://api.itglue.com/documents/789/relationships/sections/1003",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ data: { type: "document-sections", attributes: { sort: 2 } } }),
+        })
+      );
+      expect(JSON.parse((result.content[0] as { text: string }).text)).toHaveLength(2);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("creates document sections in the supplied order", async () => {
+    mockFetch
+      .mockResolvedValueOnce(createMockResponse({
+        data: { id: "1004", type: "document-sections", attributes: { content: "<p>First.</p>" } },
+      }))
+      .mockResolvedValueOnce(createMockResponse({
+        data: { id: "1005", type: "document-sections", attributes: { content: "Second", level: 2 } },
+      }));
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "create_document_section",
+        arguments: {
+          document_id: 789,
+          sections: [
+            { section_type: "text", content: "<p>First.</p>" },
+            { section_type: "heading", content: "Second", level: 2 },
+          ],
+        },
+      });
+
+      expect(mockFetch).toHaveBeenNthCalledWith(1, "https://api.itglue.com/documents/789/relationships/sections", expect.objectContaining({ method: "POST" }));
+      expect(mockFetch).toHaveBeenNthCalledWith(2, "https://api.itglue.com/documents/789/relationships/sections", expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ data: { type: "document-sections", attributes: { content: "Second", level: 2, resource_type: "Document::Heading" } } }),
+      }));
+      expect(JSON.parse((result.content[0] as { text: string }).text)).toHaveLength(2);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("deletes document sections in the supplied order", async () => {
+    mockFetch
+      .mockResolvedValueOnce(createMockResponse(null, 204))
+      .mockResolvedValueOnce(createMockResponse(null, 204));
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "delete_document_section",
+        arguments: { document_id: 789, section_ids: [1002, 1003] },
+      });
+
+      expect(mockFetch).toHaveBeenNthCalledWith(1, "https://api.itglue.com/documents/789/relationships/sections/1002", expect.objectContaining({ method: "DELETE" }));
+      expect(mockFetch).toHaveBeenNthCalledWith(2, "https://api.itglue.com/documents/789/relationships/sections/1003", expect.objectContaining({ method: "DELETE" }));
+      expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual([
+        { section_id: 1002, deleted: true },
+        { section_id: 1003, deleted: true },
+      ]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("rejects invalid batch section IDs before sending a request", async () => {
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "delete_document_section",
+        arguments: { document_id: 789, section_ids: [1002, "invalid"] },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(mockFetch).not.toHaveBeenCalled();
     } finally {
       await client.close();
       await server.close();
@@ -1170,6 +1298,24 @@ describe("Tool Handler Integration", () => {
         expect.objectContaining({ method: "PATCH" })
       );
       expect(response.ok).toBe(true);
+    });
+
+    it("should register a batch updates array for document sections", async () => {
+      const server = createMcpServer({ apiKey: "test-api-key" });
+      const client = new Client({ name: "test-client", version: "1.0.0" });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+      await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+      const { tools } = await client.listTools();
+      const updateTool = tools.find((tool) => tool.name === "update_document_section");
+      const updates = updateTool?.inputSchema.properties?.updates as Record<string, unknown> | undefined;
+
+      expect(updates).toMatchObject({ type: "array", minItems: 1 });
+      expect(updateTool?.inputSchema.required).toEqual(["document_id"]);
+
+      await client.close();
+      await server.close();
     });
   });
 
