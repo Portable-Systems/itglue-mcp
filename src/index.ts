@@ -157,8 +157,15 @@ function extractSerializedResource(value: unknown): Record<string, unknown> | un
 }
 
 function extractDocumentSectionRecord(value: unknown): Record<string, unknown> | undefined {
-  const serialized = extractSerializedResource(value);
-  if (!serialized) return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const outer = value as Record<string, unknown>;
+  const attributes = outer.attributes && typeof outer.attributes === "object"
+    ? outer.attributes as Record<string, unknown>
+    : {};
+  const resource = outer.resource && typeof outer.resource === "object"
+    ? outer.resource as Record<string, unknown>
+    : {};
+  const serialized = { ...outer, ...attributes, ...resource };
 
   return {
     ...serialized,
@@ -282,10 +289,10 @@ function formatPublishedDocument(
     sections: originalSections,
     ...metadata
   } = document;
-  const publishedSections = Array.isArray(originalContent)
-    ? originalContent
-    : Array.isArray(originalSections)
-      ? originalSections
+  const publishedSections = Array.isArray(originalSections)
+    ? originalSections
+    : Array.isArray(originalContent)
+      ? originalContent
       : [];
 
   if (contentStyle === "original") return { ...metadata, content: publishedSections };

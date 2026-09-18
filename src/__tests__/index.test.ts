@@ -411,16 +411,18 @@ describe("MCP Tool Contracts", () => {
 
   it.each([
     ["original", [
-      { resource: { sectionType: "Document::Heading", level: 2, content: "Published <title> & notes" } },
-      { resource: { resource_type: "Document::Text", content: "<p>Published <strong>body</strong></p>" } },
+      { type: "document-sections", attributes: { "resource-type": "Document::Heading", sort: 1, level: 2, content: "Policy details" } },
+      { type: "document-sections", attributes: { "resource-type": "Document::Heading", sort: 2, level: 4, content: "Guiding principles" } },
+      { type: "document-sections", attributes: { "resource-type": "Document::Text", sort: 3, content: "<p>Published <strong>body</strong></p>" } },
     ]],
-    ["html", "<h2>Published &lt;title&gt; &amp; notes</h2>\n<p>Published <strong>body</strong></p>"],
-    ["md", "## Published <title> & notes\n\nPublished **body**"],
+    ["html", "<h2>Policy details</h2>\n<h4>Guiding principles</h4>\n<p>Published <strong>body</strong></p>"],
+    ["md", "## Policy details\n\n#### Guiding principles\n\nPublished **body**"],
     ["none", undefined],
   ])("returns published document content as %s", async (contentStyle, expectedContent) => {
-    const originalContent = [
-      { resource: { sectionType: "Document::Heading", level: 2, content: "Published <title> & notes" } },
-      { resource: { resource_type: "Document::Text", content: "<p>Published <strong>body</strong></p>" } },
+    const originalSections = [
+      { type: "document-sections", attributes: { "resource-type": "Document::Heading", sort: 1, level: 2, content: "Policy details" } },
+      { type: "document-sections", attributes: { "resource-type": "Document::Heading", sort: 2, level: 4, content: "Guiding principles" } },
+      { type: "document-sections", attributes: { "resource-type": "Document::Text", sort: 3, content: "<p>Published <strong>body</strong></p>" } },
     ];
     mockFetch.mockResolvedValueOnce(createMockResponse({
       data: {
@@ -428,8 +430,12 @@ describe("MCP Tool Contracts", () => {
         type: "documents",
         attributes: {
           name: "Published document",
-          content: originalContent,
-          sections: [{ resource: { sectionType: "Document::Heading", content: "Duplicate title" } }],
+          content: [
+            { resource: { content: "Policy details" } },
+            { resource: { content: "Guiding principles" } },
+            { resource: { content: "<p>Published <strong>body</strong></p>" } },
+          ],
+          sections: originalSections,
         },
       },
     }));
