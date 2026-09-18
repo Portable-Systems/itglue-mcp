@@ -55,7 +55,9 @@ Tools named `search_*` retain their public names for compatibility, but IT Glue'
 ### Documents
 
 - **search_documents** - List standard-document previews for an organization. Omitting `document_folder_id` lists documents outside the root folder; use `0` for the root folder or a positive ID for one exact folder
-- **read_document_html** - Read all sections of one standard document as combined HTML
+- **get_document** - Get a published document with `content_style` set to `original`, `html`, `md`, or `none`; `none` returns metadata without document content
+- **create_document** - Create a document; optional `content` creates only its first text section, with additional sections managed through the section tools
+- **list_document_sections** - Read the current draft as full section records for inspection and editing
 
 ### Flexible Assets
 

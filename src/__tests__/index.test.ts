@@ -296,13 +296,13 @@ describe("Tool Definitions", () => {
     return { client, server };
   }
 
-  it("publishes the real 29-tool inventory with guarded index schemas", async () => {
+  it("publishes the real 28-tool inventory with guarded index schemas", async () => {
     const { client, server } = await connectTestClient();
 
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(29);
-      expect(new Set(tools.map((tool) => tool.name)).size).toBe(29);
+      expect(tools).toHaveLength(28);
+      expect(new Set(tools.map((tool) => tool.name)).size).toBe(28);
 
       for (const toolName of [
         "search_organizations",
@@ -322,6 +322,28 @@ describe("Tool Definitions", () => {
 
       const documents = tools.find((tool) => tool.name === "search_documents");
       expect(documents?.inputSchema.properties).toHaveProperty("document_folder_id");
+
+      const getDocument = tools.find((tool) => tool.name === "get_document");
+      expect(getDocument?.description).toContain("published version");
+      expect(getDocument?.inputSchema.required).toEqual(["id"]);
+      expect(getDocument?.inputSchema.properties).not.toHaveProperty("organization_id");
+      expect(getDocument?.inputSchema.properties.content_style).toMatchObject({
+        type: "string",
+        enum: ["original", "html", "md", "none"],
+      });
+
+      const listDocumentSections = tools.find((tool) => tool.name === "list_document_sections");
+      expect(listDocumentSections?.description).toContain("current draft");
+      expect(listDocumentSections?.description).toContain("can differ from get_document");
+
+      expect(tools.find((tool) => tool.name === "read_document_html")).toBeUndefined();
+
+      const createDocument = tools.find((tool) => tool.name === "create_document");
+      expect(createDocument?.description).toContain("only the document's first text section");
+
+      const publishDocument = tools.find((tool) => tool.name === "publish_document");
+      expect(publishDocument?.description).toContain("current IT Glue document draft");
+      expect(publishDocument?.description).toContain("published version returned by get_document");
     } finally {
       await client.close();
       await server.close();
@@ -381,6 +403,66 @@ describe("MCP Tool Contracts", () => {
         arguments: { id: "99", ...passwordArgs },
       });
       expect(String(mockFetch.mock.calls.at(-1)?.[0])).toContain(expectedQuery);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it.each([
+    ["original", [
+      { resource: { resource_type: "Document::Heading", level: 1, content: "Published title" } },
+      { resource: { resource_type: "Document::Text", content: "<p>Published <strong>body</strong></p>" } },
+    ]],
+    ["html", "<h1>Published title</h1>\n<p>Published <strong>body</strong></p>"],
+    ["md", "# Published title\n\nPublished **body**"],
+    ["none", undefined],
+  ])("returns published document content as %s", async (contentStyle, expectedContent) => {
+    const originalContent = [
+      { resource: { resource_type: "Document::Heading", level: 1, content: "Published title" } },
+      { resource: { resource_type: "Document::Text", content: "<p>Published <strong>body</strong></p>" } },
+    ];
+    mockFetch.mockResolvedValueOnce(createMockResponse({
+      data: {
+        id: "789",
+        type: "documents",
+        attributes: { name: "Published document", content: originalContent },
+      },
+    }));
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "get_document",
+        arguments: { id: "789", content_style: contentStyle },
+      });
+      const responseText = result.content[0]?.type === "text" ? result.content[0].text : "";
+      const response = JSON.parse(responseText) as { data: Record<string, unknown> };
+
+      expect(String(mockFetch.mock.calls[0]?.[0])).toContain("https://api.itglue.com/documents/789");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(response.data.name).toBe("Published document");
+      expect(response.data.content).toEqual(expectedContent);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("rejects an unsupported document content style", async () => {
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "get_document",
+        arguments: { id: "789", content_style: "markdown" },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content).toEqual([
+        { type: "text", text: "Error: content_style must be 'original', 'html', 'md', or 'none'" },
+      ]);
+      expect(mockFetch).not.toHaveBeenCalled();
     } finally {
       await client.close();
       await server.close();

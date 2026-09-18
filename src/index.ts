@@ -15,6 +15,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import TurndownService from "turndown";
 import { setServerRef } from "./utils/server-ref.js";
 import { registerPromptHandlers } from "./prompts.js";
 
@@ -252,6 +253,38 @@ function combineDocumentSectionsAsHtml(sections: Array<Record<string, unknown>>)
 
   closeStepList();
   return parts.join("\n");
+}
+
+type DocumentContentStyle = "original" | "html" | "md" | "none";
+
+function getDocumentContentStyle(value: unknown): DocumentContentStyle {
+  if (value === undefined) return "original";
+  if (value === "original" || value === "html" || value === "md" || value === "none") return value;
+  throw new Error("content_style must be 'original', 'html', 'md', or 'none'");
+}
+
+function formatPublishedDocument(
+  document: Record<string, unknown>,
+  contentStyle: DocumentContentStyle
+): Record<string, unknown> {
+  if (contentStyle === "original") return document;
+
+  const { content: originalContent, ...metadata } = document;
+  if (contentStyle === "none") return metadata;
+
+  const sections = Array.isArray(originalContent)
+    ? originalContent as Array<Record<string, unknown>>
+    : [];
+  const html = combineDocumentSectionsAsHtml(sections);
+  if (contentStyle === "html") return { ...metadata, content: html };
+
+  const turndown = new TurndownService({
+    bulletListMarker: "-",
+    codeBlockStyle: "fenced",
+    emDelimiter: "_",
+    headingStyle: "atx",
+  });
+  return { ...metadata, content: turndown.turndown(html).trim() };
 }
 
 const DOCUMENT_SECTION_TYPES: Record<string, string> = {
@@ -818,7 +851,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       // Documents
       {
         name: "search_documents",
-        description: "List one index page of standard IT Glue documents for an organization. Returns compact records with only a first-section preview; use read_document_html for the complete document. By default this lists documents outside the root folder. Set document_folder_id to 0 for root-folder documents or to a positive folder ID for that exact folder. Filter returned records locally by name.",
+        description: "List one index page of standard IT Glue documents for an organization. Returns compact records with only a first-section preview. After selecting a document, use get_document for its published metadata and content; choose its content_style to control the returned representation. Use list_document_sections only when the current draft is specifically needed. By default this lists documents outside the root folder. Set document_folder_id to 0 for root-folder documents or to a positive folder ID for that exact folder. Filter returned records locally by name.",
         inputSchema: {
           type: "object",
           properties: {
@@ -922,25 +955,26 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       },
       {
         name: "get_document",
-        description: "Get a specific document by ID from IT Glue with extended details",
+        description: "Get the published version of a specific IT Glue document by ID. This never returns unpublished section edits. Set content_style to original for the native section array, html for combined HTML, md for compact AI-friendly Markdown, or none to omit content and return document metadata only. Omit content_style to preserve the original JSON structure. Use list_document_sections only to inspect the current draft or obtain section IDs for editing.",
         inputSchema: {
           type: "object",
           properties: {
-            organization_id: {
-              type: "number",
-              description: "Organization ID that owns the document",
-            },
             id: {
               type: "string",
               description: "The document ID",
             },
+            content_style: {
+              type: "string",
+              enum: ["original", "html", "md", "none"],
+              description: `Published content representation: original keeps IT Glue's native section array; html combines sections into one HTML string; md converts that HTML to token-friendly Markdown; none omits content for metadata-only reads. Defaults to original.${OPTIONAL_PARAM_NOTE}`,
+            },
           },
-          required: ["organization_id", "id"],
+          required: ["id"],
         },
       },
       {
         name: "create_document",
-        description: "Create a new document in IT Glue for an organization",
+        description: "Create a new document in IT Glue for an organization. Optional content creates only the document's first text section; it is not a complete multi-section document definition. To add headings, steps, galleries, or further text sections, call create_document_section after creation.",
         inputSchema: {
           type: "object",
           properties: {
@@ -954,7 +988,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
             },
             content: {
               type: "string",
-              description: `Document content (HTML supported).${OPTIONAL_PARAM_NOTE}`,
+              description: `HTML supported. Creates only the first Document::Text section, not the entire multi-section document.${OPTIONAL_PARAM_NOTE}`,
             },
           },
           required: ["organization_id", "name"],
@@ -963,21 +997,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       // Document Sections
       {
         name: "list_document_sections",
-        description: "List all sections of an IT Glue document in order as full JSON section records, including section IDs and attributes. Use this to inspect or edit document structure before changing it.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            document_id: {
-              type: "number",
-              description: "The document ID",
-            },
-          },
-          required: ["document_id"],
-        },
-      },
-      {
-        name: "read_document_html",
-        description: "Read an IT Glue document as one combined HTML string built from its sections. Heading sections become h1-h6, text/step sections use rendered HTML, and galleries return image links.",
+        description: "List the current draft of an IT Glue document as ordered full JSON section records, including section IDs, types, and attributes. This may include unpublished edits and can differ from get_document, which returns the published version. Use this before creating, updating, deleting, or reordering sections, and when draft structure or section IDs are required.",
         inputSchema: {
           type: "object",
           properties: {
@@ -991,7 +1011,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       },
       {
         name: "create_document_section",
-        description: "Create exactly one document section, then call publish_document. Choose section_type and provide only matching fields: text requires content; heading requires content plus integer level 1-6; step requires content and optionally accepts duration in minutes and reset_count; gallery accepts none of content, level, duration, or reset_count. sort is optional for every type and controls position. Do not provide resource_type or rendered_content; the server generates resource_type.",
+        description: "Create exactly one section in the document draft. The change remains unpublished until publish_document is called. Choose section_type and provide only matching fields: text requires content; heading requires content plus integer level 1-6; step requires content and optionally accepts duration in minutes and reset_count; gallery accepts none of content, level, duration, or reset_count. sort is optional for every type and controls position. Do not provide resource_type or rendered_content; the server generates resource_type. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1030,7 +1050,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       },
       {
         name: "update_document_section",
-        description: "Partially update one existing document section, then call publish_document. Always provide its current section_type; it validates fields and never changes the resource type. text may update content or sort; heading may update content, level, or sort; step may update content, duration, reset_count, or sort; gallery may update sort only. Provide at least one change. sort moves the section. Do not provide resource_type or rendered_content.",
+        description: "Partially update one section in the document draft. The change remains unpublished until publish_document is called. Always provide its current section_type; it validates fields and never changes the resource type. text may update content or sort; heading may update content, level, or sort; step may update content, duration, reset_count, or sort; gallery may update sort only. Provide at least one change. sort moves the section. Do not provide resource_type or rendered_content. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1073,7 +1093,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       },
       {
         name: "delete_document_section",
-        description: "Delete a section from an IT Glue document. Call publish_document after editing.",
+        description: "Delete a section from the document draft. The deletion remains unpublished until publish_document is called. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1091,7 +1111,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       },
       {
         name: "publish_document",
-        description: "Publish an IT Glue document to make section changes visible. Always call this after creating, updating, or deleting sections.",
+        description: "Publish the current IT Glue document draft, making its section changes visible as the published version returned by get_document. Call this after all requested create, update, delete, or reorder operations are complete, unless the user explicitly asks to leave the changes as a draft.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1599,20 +1619,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "get_document": {
-        if (!args?.organization_id || !args?.id) {
+        if (!args?.id) {
           return {
-            content: [{ type: "text", text: "Error: organization_id and id are required" }],
+            content: [{ type: "text", text: "Error: id is required" }],
             isError: true,
           };
         }
-        const doc = await client.get(
-          `/organizations/${args.organization_id}/relationships/documents/${args.id}`,
+        const contentStyle = getDocumentContentStyle(args.content_style);
+        const doc = await client.get<Record<string, unknown>>(
+          `/documents/${args.id}`,
           {
             include: "related_items",
           }
         );
+        const formattedDocument = {
+          ...doc,
+          data: formatPublishedDocument(doc.data, contentStyle),
+        };
         return {
-          content: [{ type: "text", text: JSON.stringify(doc) }],
+          content: [{ type: "text", text: JSON.stringify(formattedDocument) }],
         };
       }
 
@@ -1647,24 +1672,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
-        };
-      }
-
-      case "read_document_html": {
-        if (!args?.document_id) {
-          return {
-            content: [{ type: "text", text: "Error: document_id is required" }],
-            isError: true,
-          };
-        }
-        const result = await client.request(
-          `/documents/${args.document_id}/relationships/sections`,
-          {}
-        );
-        const sections = result.data as Array<Record<string, unknown>>;
-        const html = combineDocumentSectionsAsHtml(sections);
-        return {
-          content: [{ type: "text", text: html }],
         };
       }
 
