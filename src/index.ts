@@ -1206,7 +1206,7 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
       },
       {
         name: "delete_document_section",
-        description: "Delete one or more sections from the document draft. First call list_document_sections and use its ordered result and section IDs as the authoritative original draft layout; delete only the IDs selected from that draft. The deletions remain unpublished until publish_document is called. For one section, provide section_id. To delete multiple sections in one call, provide section_ids: an ordered non-empty array of section IDs. IT Glue processes sections individually, so a later failure can leave earlier deletions applied. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
+        description: "Delete one or more sections from the document draft. First call list_document_sections and use its ordered result and section IDs as the authoritative original draft layout; delete only the IDs selected from that draft. Provide section_ids as a non-empty ordered array, even when deleting one section. The deletions remain unpublished until publish_document is called. IT Glue processes sections individually, so a later failure can leave earlier deletions applied. After all requested draft edits are complete, call publish_document unless the user explicitly wants to leave them as a draft.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1214,20 +1214,16 @@ export function createMcpServer(credentialOverrides?: GatewayCredentials): Serve
               type: "number",
               description: "The document ID",
             },
-            section_id: {
-              type: "number",
-              description: "The section ID to delete (from list_document_sections)",
-            },
             section_ids: {
               type: "array",
               minItems: 1,
               items: {
                 type: "number",
               },
-              description: "Ordered section IDs to delete. Use instead of section_id.",
+              description: "Ordered section IDs to delete (from list_document_sections); use a one-element array for one section.",
             },
           },
-          required: ["document_id"],
+          required: ["document_id", "section_ids"],
         },
       },
       {
@@ -1905,15 +1901,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
-        const sectionIdsInput = args.section_ids;
-        const sectionIds = sectionIdsInput === undefined
-          ? [args.section_id]
-          : Array.isArray(sectionIdsInput) ? sectionIdsInput : undefined;
-        if (!sectionIds || sectionIds.length === 0) {
-          throw new Error("Provide one section_id or a non-empty section_ids array");
+        const sectionIds = args.section_ids;
+        if (!Array.isArray(sectionIds) || sectionIds.length === 0) {
+          throw new Error("Provide a non-empty section_ids array");
         }
         if (sectionIds.some((sectionId) => !Number.isInteger(sectionId) || Number(sectionId) <= 0)) {
-          throw new Error("section_id and every section_ids entry must be positive integers");
+          throw new Error("Every section_ids entry must be a positive integer");
         }
         for (const sectionId of sectionIds) {
           await client.delete(
@@ -1921,9 +1914,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           );
         }
         return {
-          content: [{ type: "text", text: sectionIdsInput === undefined
-            ? `Section ${args.section_id} deleted successfully`
-            : JSON.stringify(sectionIds.map((sectionId) => ({ section_id: sectionId, deleted: true })), null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(sectionIds.map((sectionId) => ({ section_id: sectionId, deleted: true })), null, 2) }],
         };
       }
 

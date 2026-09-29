@@ -344,6 +344,10 @@ describe("Tool Definitions", () => {
       expect(updateDocumentSection?.description).toContain("never Markdown or plain text");
       expect(updateDocumentSection?.description).toContain("automatically replaced URL");
 
+      const deleteDocumentSection = tools.find((tool) => tool.name === "delete_document_section");
+      expect(deleteDocumentSection?.inputSchema.required).toEqual(["document_id", "section_ids"]);
+      expect(deleteDocumentSection?.inputSchema.properties).not.toHaveProperty("section_id");
+
       expect(tools.find((tool) => tool.name === "read_document_html")).toBeUndefined();
 
       const createDocument = tools.find((tool) => tool.name === "create_document");
@@ -520,6 +524,30 @@ describe("MCP Tool Contracts", () => {
     }
   });
 
+  it("accepts a large section ID in the deletion array without changing its value", async () => {
+    mockFetch.mockResolvedValueOnce(createMockResponse(null, 204));
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "delete_document_section",
+        arguments: { document_id: 789, section_ids: [4907789328009338] },
+      });
+
+      expect(result.isError).not.toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://api.itglue.com/documents/789/relationships/sections/4907789328009338",
+        expect.objectContaining({ method: "DELETE" })
+      );
+      expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual([
+        { section_id: 4907789328009338, deleted: true },
+      ]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("rejects invalid batch section IDs before sending a request", async () => {
     const { client, server } = await connectTestClient();
 
@@ -527,6 +555,23 @@ describe("MCP Tool Contracts", () => {
       const result = await client.callTool({
         name: "delete_document_section",
         arguments: { document_id: 789, section_ids: [1002, "invalid"] },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("requires section_ids even when deleting one section", async () => {
+    const { client, server } = await connectTestClient();
+
+    try {
+      const result = await client.callTool({
+        name: "delete_document_section",
+        arguments: { document_id: 789, section_id: 1002 },
       });
 
       expect(result.isError).toBe(true);
